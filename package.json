@@ -1,0 +1,13 @@
+{
+  "name": "live-tools-webapp",
+  "version": "1.0.0",
+  "description": "LIVE Tools Webアプリ版（ブラウザ操作・短いURL・設定はサーバー保存）",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "socket.io": "^4.7.5",
+    "tiktok-live-connector": "2.1.0"
+  }
+}

@@ -1,0 +1,141 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>使い方・ヘルプ — LIVE Tools Web</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%2310262a'/><text x='50' y='68' font-size='52' text-anchor='middle'>❓</text></svg>">
+<style>
+  :root{--bg:#0f171c;--card:#16222a;--ac:#1ab5ba;--mut:#8aa0a8;--tx:#e7eef0;--bd:#2a3a42;--warn:#fbdb58}
+  *{box-sizing:border-box}
+  body{font-family:system-ui,"Segoe UI",sans-serif;background:var(--bg);color:var(--tx);margin:0;line-height:1.6}
+  .wrap{max-width:780px;margin:0 auto;padding:0 16px 48px}
+  .top{position:sticky;top:0;z-index:5;background:#0f171c;display:flex;align-items:center;justify-content:space-between;padding:14px 4px;border-bottom:1px solid var(--bd);margin-bottom:8px}
+  .top .ttl{display:flex;align-items:center;gap:9px;font-size:18px;font-weight:800;color:#eafafa}
+  .top .ttl .ic{color:var(--ac)}
+  a.back{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#cdeeee;background:#13343a;border:1px solid var(--ac);border-radius:9px;padding:8px 13px;text-decoration:none;transition:.15s;font-weight:700}
+  a.back:hover{background:var(--ac);color:#06343a}
+  h2{font-size:13px;color:var(--mut);letter-spacing:.05em;font-weight:700;margin:26px 0 10px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  @media(max-width:560px){.grid2{grid-template-columns:1fr}}
+  .box{background:var(--card);border:1px solid #1ab5ba33;border-radius:11px;padding:14px}
+  .box .bt{display:flex;align-items:center;gap:8px;font-weight:800;font-size:14px;margin-bottom:5px}
+  .box .bd{font-size:12.5px;color:var(--mut);line-height:1.6}
+  .box .bd b{color:#cdeeee}
+  .dot{flex:0 0 auto;width:11px;height:11px;border-radius:50%}
+  .steps{background:var(--card);border:1px solid #1ab5ba33;border-radius:12px;padding:6px 16px}
+  .step{display:flex;gap:13px;align-items:flex-start;padding:13px 0;border-bottom:1px solid #ffffff12}
+  .step:last-child{border-bottom:0}
+  .num{flex:0 0 auto;width:24px;height:24px;border-radius:50%;background:var(--ac);color:#04161a;font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center}
+  .step .sx{font-size:13.5px}
+  .step .sx b{color:#cdeeee}
+  .fig{background:var(--card);border:1px solid #1ab5ba33;border-radius:12px;padding:16px;margin-top:12px;text-align:center}
+  .fig svg{max-width:100%;height:auto}
+  .fig figcaption{font-size:11.5px;color:var(--mut);margin-top:10px}
+  .note{background:#1a1410;border:1px solid #fbdb5833;border-radius:11px;padding:14px}
+  .note .nt{display:flex;gap:10px;align-items:flex-start}
+  .note b{color:var(--warn)}
+  .note .ntx{font-size:12.5px;color:#e7d9b0;line-height:1.7}
+  code{background:#0b1316;border:1px solid var(--bd);border-radius:5px;padding:1px 6px;font-size:12px;color:#bfe9e9}
+  .foot{font-size:11px;color:#5f6f76;text-align:center;margin-top:28px}
+</style></head><body>
+<div class="wrap">
+  <div class="top">
+    <span class="ttl"><span class="ic">❓</span>使い方・ヘルプ</span>
+    <a class="back" href="/">← メニューへ戻る</a>
+  </div>
+
+  <h2>基本の流れ（4ステップ）</h2>
+  <div class="steps">
+    <div class="step"><span class="num">1</span><div class="sx">メニューの<b>「＋ 新しいセットを作成」</b>でオーバーレイセットを作ります（1セット＝メーター一式）。</div></div>
+    <div class="step"><span class="num">2</span><div class="sx">使いたいメーターの<b>「📋 URL」</b>をコピーします。<b>設定を変えてもURLはそのまま</b>で自動反映されます。</div></div>
+    <div class="step"><span class="num">3</span><div class="sx">OBSの<b>「ソース」→ ＋ → ブラウザ</b> を追加し、URL欄に貼り付けます（推奨 幅1920×高さ1080）。</div></div>
+    <div class="step"><span class="num">4</span><div class="sx">メニューの<b>「接続」</b>にTikTokユーザー名（@不要）を入れて接続。色や目標は各メーターの<b>⚙</b>から変更できます。</div></div>
+  </div>
+
+  <figure class="fig">
+    <svg viewBox="0 0 720 230" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="obsTitle obsDesc">
+      <title id="obsTitle">OBSのソースにブラウザを追加してURLを貼る手順図</title>
+      <desc id="obsDesc">左：ソースパネルのプラスボタン。中央：ブラウザを選ぶメニュー。右：URLを貼り付けるプロパティ画面。</desc>
+      <rect x="8" y="20" width="190" height="170" rx="10" fill="#16222a" stroke="#2a3a42"/>
+      <text x="22" y="44" fill="#8aa0a8" font-family="system-ui" font-size="12" font-weight="700">ソース</text>
+      <rect x="22" y="58" width="162" height="22" rx="5" fill="#0f171c"/>
+      <rect x="22" y="86" width="162" height="22" rx="5" fill="#0f171c"/>
+      <rect x="22" y="150" width="30" height="26" rx="6" fill="#1ab5ba"/>
+      <text x="37" y="169" fill="#04161a" font-family="system-ui" font-size="19" font-weight="800" text-anchor="middle">+</text>
+      <text x="62" y="168" fill="#cdeeee" font-family="system-ui" font-size="12">追加</text>
+      <path d="M205 105 h44" stroke="#1ab5ba" stroke-width="2.5" fill="none" marker-end="url(#ah)"/>
+      <rect x="262" y="46" width="170" height="138" rx="10" fill="#16222a" stroke="#2a3a42"/>
+      <rect x="274" y="58" width="146" height="26" rx="5" fill="#0f171c"/><text x="286" y="76" fill="#8aa0a8" font-family="system-ui" font-size="12">画像</text>
+      <rect x="274" y="90" width="146" height="26" rx="5" fill="#13343a" stroke="#1ab5ba"/><text x="286" y="108" fill="#1ab5ba" font-family="system-ui" font-size="12" font-weight="800">ブラウザ</text>
+      <rect x="274" y="122" width="146" height="26" rx="5" fill="#0f171c"/><text x="286" y="140" fill="#8aa0a8" font-family="system-ui" font-size="12">テキスト</text>
+      <rect x="274" y="154" width="146" height="22" rx="5" fill="#0f171c"/><text x="286" y="170" fill="#8aa0a8" font-family="system-ui" font-size="12">色ソース</text>
+      <path d="M440 115 h44" stroke="#1ab5ba" stroke-width="2.5" fill="none" marker-end="url(#ah)"/>
+      <rect x="496" y="20" width="216" height="190" rx="10" fill="#16222a" stroke="#2a3a42"/>
+      <text x="512" y="44" fill="#8aa0a8" font-family="system-ui" font-size="12" font-weight="700">プロパティ</text>
+      <text x="512" y="72" fill="#cdeeee" font-family="system-ui" font-size="12" font-weight="700">URL</text>
+      <rect x="512" y="80" width="184" height="28" rx="6" fill="#0b1316" stroke="#1ab5ba"/>
+      <text x="522" y="98" fill="#bfe9e9" font-family="system-ui" font-size="11">http://localhost:21216/...</text>
+      <text x="512" y="132" fill="#8aa0a8" font-family="system-ui" font-size="11">幅</text>
+      <rect x="512" y="138" width="80" height="22" rx="5" fill="#0f171c"/><text x="522" y="153" fill="#cdeeee" font-family="system-ui" font-size="11">1920</text>
+      <text x="608" y="132" fill="#8aa0a8" font-family="system-ui" font-size="11">高さ</text>
+      <rect x="608" y="138" width="80" height="22" rx="5" fill="#0f171c"/><text x="618" y="153" fill="#cdeeee" font-family="system-ui" font-size="11">1080</text>
+      <rect x="556" y="174" width="140" height="24" rx="6" fill="#1ab5ba"/><text x="626" y="191" fill="#04161a" font-family="system-ui" font-size="12" font-weight="800" text-anchor="middle">OK</text>
+      <defs><marker id="ah" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" fill="#1ab5ba"/></marker></defs>
+    </svg>
+    <figcaption>ソース ＋ →「ブラウザ」→ コピーしたURLを貼り付け（ポート21216）</figcaption>
+  </figure>
+
+  <h2>メーターの種類</h2>
+  <div class="grid">
+    <div class="box"><div class="bt"><span class="dot" style="background:#1ab5ba"></span>コインメーター</div><div class="bd">受け取ったコイン（ギフトのダイヤ）の総数をバーやシェイプで表示。目標達成で<b>WINカウンターへ自動加算</b>できます（⚙「達成でWIN追加」）。</div></div>
+    <div class="box"><div class="bt"><span class="dot" style="background:#ff7eb3"></span>いいねメーター</div><div class="bd">いいね数を目標までバー・ハート・星などで表示します。</div></div>
+    <div class="box"><div class="bt"><span class="dot" style="background:#1ab5ba"></span>ギフトカウンター</div><div class="bd">対象ギフトを「個数」または「人数」で集計して表示します。</div></div>
+    <div class="box"><div class="bt"><span class="dot" style="background:#f5c63e"></span>いいね/コインランキング</div><div class="bd">応援トップを順位表示。1位は王冠＋金。表示人数・幅・色は⚙で変更できます。</div></div>
+    <div class="box"><div class="bt"><span class="dot" style="background:#f5c63e"></span>WINカウンター</div><div class="bd">累計WIN数を表示。<b>デザイン5種</b>（シンプル文字/ゴールド数字/ダークバー/ゲージバー/角丸バー）、アイコン変更、数字だけの拡大に対応。数はサーバー保存でリロードしても消えません。</div></div>
+    <div class="box"><div class="bt"><span class="dot" style="background:#7fbdf6"></span>演出オーバーレイ</div><div class="bd">ギフト・フォロー・いいね・<b>WINの増減/目標達成</b>に反応して動画・画像・音を再生。表示位置は<b>「🖱 位置調整」でドラッグ</b>して決められます。</div></div>
+  </div>
+
+  <h2>WINカウンターとマイクラ連携</h2>
+  <div class="grid2">
+    <div class="box">
+      <div class="bt">🏆 WINの増やし方（3通り）</div>
+      <div class="bd">① WINカウンター⚙の<b>＋1/−1/数値指定</b>（手動）<br>② コインメーター⚙<b>「達成でWIN追加」</b>＝目標達成で自動加算<br>③ <b>マイクラ連携</b>＝ゲーム内のWIN増減を自動反映<br><br>目標（例 3 / 10）は常に表示され、ゲージバー/角丸バーでは進捗ゲージになります（「ゲージを表示」OFFで数字だけにもできます）。</div>
+    </div>
+    <div class="box">
+      <div class="bt">⛏ マイクラ連携（CommonWIN）</div>
+      <div class="bd">WINカウンター⚙「マイクラ連携」をONにすると、マイクラのWINプラグイン（CommonWIN）のオーバーレイ（既定 <code>http://localhost:8765</code>）を1秒ごとに監視し、<b>ゲーム内のWIN増減をそのままカウンターへ反映</b>します。<br><br>・マイクラが別PCならそのPCのIPに変更（例 <code>http://192.168.1.5:8765</code>）<br>・接続状態は⚙内に表示されます<br>・＋WIN/−WIN/目標達成の演出（演出オーバーレイ）も連動します</div>
+    </div>
+  </div>
+
+  <h2>WIN演出（動画・画像・音）</h2>
+  <div class="steps">
+    <div class="step"><span class="num">1</span><div class="sx"><b>演出オーバーレイの⚙</b>（または WINカウンター⚙の「🎬 演出オーバーレイの設定を開く」）を開きます。</div></div>
+    <div class="step"><span class="num">2</span><div class="sx"><b>「＋ ルールを追加」</b>→ トリガーで<b>「WINが増えたとき」「WINが減ったとき」「WINの目標を達成したとき」</b>のいずれかを選びます。</div></div>
+    <div class="step"><span class="num">3</span><div class="sx">動画/画像/音（mp4 / webm / gif / png / mp3・上限50MB）を<b>「📁 ファイルを追加」</b>で取り込み、音量・表示時間・テキスト（<code>{count}</code>=増減数）を設定します。</div></div>
+    <div class="step"><span class="num">4</span><div class="sx">ルールの<b>「🖱 位置調整」</b>で演出をドラッグして表示位置を保存。「▶ テスト」はOBSにも同時に出ます。OBSには<b>演出オーバーレイのURL</b>を別ソースとして貼ってください。</div></div>
+  </div>
+
+  <h2>OBSにメーターが表示されない／真っ暗なとき</h2>
+  <div class="note">
+    <div class="nt">
+      <span style="font-size:18px">🛠️</span>
+      <div class="ntx">まず<b>このアプリ（start.bat のウィンドウ）が起動している</b>ことを確認し、下の順に試してください。</div>
+    </div>
+    <div class="steps" style="margin-top:12px;background:#13202a">
+      <div class="step"><span class="num">1</span><div class="sx"><b>ソースを再読み込み</b>：OBSの対象ブラウザソースを<b>ダブルクリック→「OK」</b>で読み込み直し。</div></div>
+      <div class="step"><span class="num">2</span><div class="sx"><b>キャッシュをクリア</b>：ソースを<b>右クリック→「現在のページのキャッシュを更新」</b>。</div></div>
+      <div class="step"><span class="num">3</span><div class="sx"><b>アプリを再起動</b>：<b>start.bat をもう一度実行</b> → OBSのソースもキャッシュ更新。<b>更新のあとは必ずアプリの再起動が必要</b>です。古いサーバーが（ウィンドウなしで）裏に残っていても、起動時に自動で終了して入れ替わります。</div></div>
+    </div>
+    <div class="nt" style="margin-top:12px">
+      <span style="font-size:18px">🐞</span>
+      <div class="ntx">それでも直らないときは、メニュー左下の<b>🐞 デバッグ / エラーログ</b>（<code>/debug</code>）でエラー内容を確認できます。音が出ないときはOBSソースのプロパティで「OBSを介して音声を制御」を確認してください。</div>
+    </div>
+  </div>
+
+  <div class="foot">LIVE Tools Web — 使い方・ヘルプ &nbsp;|&nbsp; v<span id="ver"></span></div>
+</div>
+<script>
+'use strict';
+const APP_VERSION='0.0.0';   // サーバーが配信時に実バージョンへ書き換える
+(function(){ var v=document.getElementById('ver'); if(v) v.textContent=APP_VERSION; })();
+</script>
+</body></html>

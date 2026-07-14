@@ -1,0 +1,224 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>配信分析 — LIVE Tools</title>
+<script src="/socket.io/socket.io.js"></script>
+<style>
+  :root{--bg:#0f171c;--card:#16222a;--ac:#1ab5ba;--mut:#8aa0a8;--tx:#e7eef0;--bd:#2a3a42;--like:#ff7eb3;--coin:#ffd84a}
+  *{box-sizing:border-box}
+  body{font-family:system-ui,"Segoe UI",sans-serif;background:var(--bg);color:var(--tx);margin:0;line-height:1.6}
+  .wrap{max-width:860px;margin:0 auto;padding:0 16px 48px}
+  .top{position:sticky;top:0;z-index:5;background:#0f171c;display:flex;align-items:center;justify-content:space-between;padding:14px 4px;border-bottom:1px solid var(--bd);margin-bottom:12px;gap:8px}
+  .top .ttl{display:flex;align-items:center;gap:9px;font-size:18px;font-weight:800;color:#eafafa}
+  .top .ttl .ic{color:var(--ac)}
+  .btn{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#cdeeee;background:#13343a;border:1px solid var(--ac);border-radius:9px;padding:8px 13px;text-decoration:none;cursor:pointer;font-weight:700;transition:.15s}
+  .btn:hover{background:var(--ac);color:#06343a}
+  .bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 2px 12px}
+  .btn.alt{background:#16222a;border-color:#2a3a42;color:#cdd9dd}
+  .btn.alt:hover{background:#1c2c34;color:#fff;border-color:#1ab5ba}
+  .btn.danger{background:#26202a;border-color:rgba(216,85,106,.5);color:#ff9aab}
+  .btn.danger:hover{background:#d8556a;color:#fff}
+  .btn.on{background:var(--ac);color:#06343a}
+  .btn.off{background:#26202a;border-color:rgba(216,85,106,.5);color:#ff9aab}
+  .hint{font-size:12px;color:var(--mut);margin:0 2px 12px}
+  table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid #1ab5ba22;border-radius:12px;overflow:hidden}
+  thead th{font-size:11.5px;color:var(--mut);font-weight:700;text-align:left;padding:10px 12px;border-bottom:1px solid #ffffff12;white-space:nowrap}
+  th.num,td.num{text-align:right}
+  th.sortable{cursor:pointer;user-select:none}
+  th.sortable:hover{color:#cdeeee}
+  tbody tr{border-top:1px solid #ffffff0a}
+  tbody tr.row{cursor:pointer}
+  tbody tr.row:hover{background:#1c2c34}
+  td{padding:10px 12px;font-size:13px;vertical-align:middle}
+  .live{display:inline-block;font-size:10px;font-weight:800;color:#04161a;background:#ff5b5b;border-radius:5px;padding:1px 6px;margin-left:6px}
+  .ttl3{font-weight:700;color:#e7eef0}
+  .sub{font-size:11.5px;color:var(--mut)}
+  .av{position:relative;flex:0 0 auto;width:30px;height:30px;border-radius:50%;background:#0c0f10;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;color:var(--ac);overflow:hidden;vertical-align:middle;margin-right:8px}
+  .av>span{line-height:1}
+  .av img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:50%}
+  .likev{color:var(--like);font-weight:800}
+  .coinv{color:var(--coin);font-weight:800}
+  .followv{color:#7fc3ff;font-weight:800}
+  .cards{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:0 0 14px}
+  @media(max-width:560px){.cards{grid-template-columns:repeat(2,1fr)}}
+  .mc{background:var(--card);border:1px solid #1ab5ba22;border-radius:11px;padding:11px 13px}
+  .mc .l{font-size:11.5px;color:var(--mut);margin-bottom:4px}
+  .mc .v{font-size:20px;font-weight:800}
+  .dhead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 2px 12px}
+  .dhead .t{font-size:17px;font-weight:800;color:#eafafa}
+  .empty{font-size:13px;color:var(--mut);text-align:center;padding:30px}
+  .foot{font-size:11px;color:#5f6f76;text-align:center;margin-top:24px}
+  /* 並び替えプルダウン：暗色テーマに合わせる（ネイティブ矢印を消して自前の矢印に） */
+  select{appearance:none;-webkit-appearance:none;background-color:#0f171c;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%231ab5ba' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>");background-repeat:no-repeat;background-position:right 10px center;background-size:11px;border:1px solid var(--bd);color:var(--tx);border-radius:9px;padding:7px 30px 7px 12px;font-size:13px;font-family:inherit;font-weight:600;cursor:pointer;transition:.15s}
+  select:hover{border-color:var(--ac)}
+  select:focus{outline:none;border-color:var(--ac);box-shadow:0 0 0 2px #1ab5ba33}
+  select option{background:#16222a;color:var(--tx)}
+  /* 行内の操作ボタン（タイトル編集・削除） */
+  td.act{white-space:nowrap;text-align:right}
+  .iconbtn{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:8px;border:1px solid var(--bd);background:#16222a;color:#cdd9dd;font-size:14px;cursor:pointer;transition:.15s;vertical-align:middle}
+  .iconbtn+.iconbtn{margin-left:6px}
+  .iconbtn:hover{border-color:var(--ac);color:#fff;background:#1c2c34}
+  .iconbtn.del:hover{border-color:#d8556a;background:#d8556a;color:#fff}
+  .dhead .iconbtn{width:28px;height:28px}
+  /* 入力モーダル（Electronは window.prompt 非対応のため自前） */
+  .modal-ov{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:50;padding:16px}
+  .modal{background:var(--card);border:1px solid #1ab5ba33;border-radius:14px;padding:18px;width:100%;max-width:420px;box-shadow:0 12px 40px rgba(0,0,0,.5)}
+  .modal .ml{font-size:13px;font-weight:700;color:#bfe9e9;margin-bottom:10px}
+  .modal .mi{width:100%;background:#0f171c;border:1px solid var(--bd);color:var(--tx);border-radius:10px;padding:10px 12px;font-size:14px;font-family:inherit}
+  .modal .mi:focus{outline:none;border-color:var(--ac)}
+  .modal .mb{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
+</style></head><body>
+<div class="wrap">
+  <div class="top">
+    <span class="ttl"><span class="ic">📊</span><span id="topTitle">配信分析</span></span>
+    <span style="display:flex;gap:8px"><button class="btn" id="refreshBtn" title="最新の状態に更新">↻ 更新</button><a class="btn" href="/">← メニュー</a></span>
+  </div>
+  <div class="bar">
+    <button class="btn" id="toggleBtn" title="配信データの取得をON/OFF（OFFで集計・保存を停止＝軽量）">配信データ取得：—</button>
+    <button class="btn alt" id="csvBtn" title="表示中のデータをCSVで保存（Excelで開けます）">⤓ CSV出力</button>
+    <button class="btn danger" id="resetBtn" title="保存済みの配信データをすべて削除">🗑 リセット</button>
+  </div>
+  <div id="view"><div class="empty">読み込み中…</div></div>
+  <div class="foot">LIVE Tools — 配信分析</div>
+</div>
+<script>
+  (function(){
+    var sock=null, curView='list', curId=null, sortKey='coins', timer=null, lastList=[], lastDetail=null, analyticsState=null;
+    function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+    function comma(n){ n=Math.round(Number(n)||0); return n.toLocaleString('en-US'); }
+    function pad(n){ return (n<10?'0':'')+n; }
+    function fmtDate(ts){ if(!ts) return '-'; var d=new Date(ts); return (d.getMonth()+1)+'/'+d.getDate()+' '+pad(d.getHours())+':'+pad(d.getMinutes()); }
+    function fmtDur(a,b){ if(!a) return ''; var ms=(b||Date.now())-a; if(ms<0) ms=0; var m=Math.floor(ms/60000), h=Math.floor(m/60); m=m%60; return h>0?(h+'時間'+m+'分'):(m+'分'); }
+    function fmtWatch(ms){ ms=Number(ms)||0; if(ms<=0) return '—'; if(ms<60000) return Math.round(ms/1000)+'秒'; var m=Math.floor(ms/60000), h=Math.floor(m/60); m=m%60; return h>0?(h+'時間'+m+'分'):(m+'分'); }
+    function ini(nick){ return (String(nick||'').trim().charAt(0)||'★').toUpperCase(); }
+    function avatar(p){ return '<span class="av"><span>'+esc(ini(p.nick))+'</span>'+(p.avatar?'<img src="'+esc(p.avatar)+'" alt="" onerror="this.remove()">':'')+'</span>'; }
+    var view=document.getElementById('view'), topTitle=document.getElementById('topTitle');
+
+    function showList(list){
+      curView='list'; curId=null; lastList=list||[]; topTitle.textContent='配信分析';
+      if(!list||!list.length){ view.innerHTML='<div class="empty">まだ配信データがありません。<br>TikTokに接続して配信を受信すると、ここに配信ごとのデータが記録されます。</div>'; return; }
+      var rows=list.map(function(b){
+        var when=fmtDate(b.startedAt)+(b.endedAt&&!b.live?(' 〜 '+fmtDate(b.endedAt)):'')+' ('+fmtDur(b.startedAt,b.endedAt)+')';
+        var title=b.title?esc(b.title):'<span class="sub">（無題の配信）</span>';
+        return '<tr class="row" data-id="'+esc(b.id)+'">'
+          +'<td><div class="ttl3">'+title+(b.live?'<span class="live">受信中</span>':'')+'</div><div class="sub">'+when+' ・ @'+esc(b.user||'-')+'</div></td>'
+          +'<td class="num likev">❤ '+comma(b.totalLikes)+'</td>'
+          +'<td class="num coinv">🪙 '+comma(b.totalCoins)+'</td>'
+          +'<td class="num followv">👤+'+comma(b.follows||0)+'</td>'
+          +'<td class="num sub">'+comma(b.coinUsers||0)+'人</td>'
+          +'<td class="act"><button class="iconbtn editT" title="タイトルを編集" data-id="'+esc(b.id)+'" data-title="'+esc(b.title||'')+'">✎</button><button class="iconbtn del delB" title="この配信を削除" data-id="'+esc(b.id)+'" data-title="'+esc(b.title||'')+'">🗑</button></td>'
+          +'</tr>';
+      }).join('');
+      view.innerHTML='<div class="hint">配信ごとの記録です。行をクリックすると、その配信の視聴者全員のいいね・コインを確認できます。タイトルが取れていない配信は ✎ で修正、不要な配信は 🗑 で削除できます。</div>'
+        +'<table><thead><tr><th>配信（日時・タイトル）</th><th class="num">総いいね</th><th class="num">総コイン</th><th class="num">フォロー</th><th class="num">新規ギフター</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>';
+      [].forEach.call(view.querySelectorAll('tr.row'),function(tr){ tr.addEventListener('click',function(e){ if(e.target.closest('.iconbtn')) return; openDetail(tr.getAttribute('data-id')); }); });
+      [].forEach.call(view.querySelectorAll('.editT'),function(btn){ btn.addEventListener('click',function(e){ e.stopPropagation(); editTitle(btn.getAttribute('data-id'), btn.getAttribute('data-title')); }); });
+      [].forEach.call(view.querySelectorAll('.delB'),function(btn){ btn.addEventListener('click',function(e){ e.stopPropagation(); deleteRow(btn.getAttribute('data-id'), btn.getAttribute('data-title')); }); });
+    }
+
+    function showDetail(d){
+      if(!d){ view.innerHTML='<div class="empty">この配信データが見つかりませんでした。</div>'; return; }
+      curView='detail'; curId=d.id; lastDetail=d; topTitle.textContent='配信の詳細';
+      var SORTS={ coins:function(a,b){return (b.coins-a.coins)||(b.likes-a.likes);}, likes:function(a,b){return (b.likes-a.likes)||(b.coins-a.coins);}, watch:function(a,b){return ((b.watchMs||0)-(a.watchMs||0))||(b.coins-a.coins);} };
+      var parts=(d.participants||[]).slice().sort(SORTS[sortKey]||SORTS.coins);
+      var rows=parts.map(function(p,i){
+        return '<tr><td class="num sub">'+(i+1)+'</td><td>'+avatar(p)+'<span class="ttl3">'+esc(p.nick||p.user)+'</span></td>'
+          +'<td class="num likev">'+comma(p.likes)+'</td><td class="num coinv">'+comma(p.coins)+'</td><td class="num sub">'+fmtWatch(p.watchMs)+'</td></tr>';
+      }).join('');
+      var when=fmtDate(d.startedAt)+(d.endedAt&&!d.live?(' 〜 '+fmtDate(d.endedAt)):'')+' ('+fmtDur(d.startedAt,d.endedAt)+')';
+      view.innerHTML='<div style="margin-bottom:12px"><button class="btn" id="backList">← 一覧へ</button></div>'
+        +'<div class="dhead"><span class="t">'+(d.title?esc(d.title):'（無題の配信）')+(d.live?'<span class="live">受信中</span>':'')+'</span><button class="iconbtn editT" id="editTitleD" title="タイトルを編集">✎</button><span class="sub">'+when+' ・ @'+esc(d.user||'-')+'</span></div>'
+        +'<div class="cards">'
+          +'<div class="mc"><div class="l">❤️ 総いいね</div><div class="v likev">'+comma(d.totalLikes)+'</div></div>'
+          +'<div class="mc"><div class="l">🪙 総コイン</div><div class="v coinv">'+comma(d.totalCoins)+'</div></div>'
+          +'<div class="mc"><div class="l">👤 フォロー</div><div class="v followv">+'+comma(d.follows||0)+'</div></div>'
+          +'<div class="mc"><div class="l">🎁 新規ギフター</div><div class="v">'+comma(parts.filter(function(p){return (p.coins||0)>0;}).length)+'</div></div>'
+        +'</div>'
+        +'<div class="bar"><label style="font-size:12px;color:var(--mut)">並び替え</label><select id="sortSel"><option value="coins">コイン数順</option><option value="likes">いいね数順</option><option value="watch">視聴時間順</option></select></div>'
+        +'<div class="hint">視聴者全員のいいね・コイン・視聴時間です。視聴時間は配信中の最初〜最後のアクティビティからの推定です。</div>'
+        +'<table><thead><tr><th class="num">#</th><th>視聴者</th><th class="num">いいね</th><th class="num">コイン</th><th class="num">視聴時間</th></tr></thead><tbody>'+rows+'</tbody></table>'
+        +(parts.length?'':'<div class="empty">この配信には参加者データがありません。</div>');
+      var bl=document.getElementById('backList'); if(bl) bl.addEventListener('click',loadList);
+      var et=document.getElementById('editTitleD'); if(et) et.addEventListener('click',function(){ editTitle(d.id, d.title||''); });
+      var sel=document.getElementById('sortSel'); if(sel){ sel.value=sortKey; sel.addEventListener('change',function(){ sortKey=sel.value; showDetail(d); }); }
+    }
+
+    function loadList(){ curView='list'; curId=null; if(sock&&sock.connected) sock.emit('getBroadcasts'); }
+    function openDetail(id){ curId=id; if(sock&&sock.connected) sock.emit('getBroadcast',{id:id}); }
+
+    // ===== 入力モーダル（Electronは window.prompt 非対応のため自前）=====
+    function askText(label, cur, cb){
+      var ov=document.createElement('div'); ov.className='modal-ov';
+      var box=document.createElement('div'); box.className='modal';
+      box.innerHTML='<div class="ml">'+esc(label)+'</div><input class="mi" type="text" maxlength="120"><div class="mb"><button class="btn alt" data-x>キャンセル</button><button class="btn" data-ok>保存</button></div>';
+      ov.appendChild(box); document.body.appendChild(ov);
+      var inp=box.querySelector('.mi'); inp.value=cur||''; setTimeout(function(){ try{ inp.focus(); inp.select(); }catch(_){} },0);
+      function close(){ try{ document.body.removeChild(ov); }catch(_){} }
+      function ok(){ var v=inp.value; close(); cb(v); }
+      box.querySelector('[data-x]').addEventListener('click',close);
+      box.querySelector('[data-ok]').addEventListener('click',ok);
+      ov.addEventListener('mousedown',function(e){ if(e.target===ov) close(); });
+      inp.addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); ok(); } else if(e.key==='Escape'){ e.preventDefault(); close(); } });
+    }
+    // タイトルを編集（取得できなかった/間違ったタイトルを直す）
+    function editTitle(id, cur){
+      askText('配信タイトルを入力（空にすると「無題」になります）', cur||'', function(v){
+        if(sock&&sock.connected){ sock.emit('setBroadcastTitle',{id:id,title:v}); if(curView==='detail'&&curId===id) setTimeout(function(){ openDetail(id); },120); }
+      });
+    }
+    // 1件の配信データを削除
+    function deleteRow(id, title){
+      var t=title?('「'+title+'」'):'この配信';
+      if(confirm(t+'のデータを削除します。よろしいですか？（元に戻せません）')){ if(sock&&sock.connected) sock.emit('deleteBroadcast',{id:id}); }
+    }
+
+    // ===== 取得ON/OFFトグル =====
+    var toggleBtn=document.getElementById('toggleBtn');
+    function updateToggle(){
+      if(analyticsState===null){ toggleBtn.textContent='配信データ取得：—'; toggleBtn.className='btn'; return; }
+      toggleBtn.textContent='配信データ取得：'+(analyticsState?'ON':'OFF');
+      toggleBtn.className='btn '+(analyticsState?'on':'off');
+    }
+    toggleBtn.addEventListener('click',function(){ if(analyticsState===null) return; if(sock&&sock.connected) sock.emit('setAnalyticsOn',{on:!analyticsState}); });
+
+    // ===== CSV出力（Excelで開ける。UTF-8 BOM付き）=====
+    function csvCell(s){ s=String(s==null?'':s); return /[",\n]/.test(s)?('"'+s.replace(/"/g,'""')+'"'):s; }
+    function download(name,csv){ try{ var blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'}); var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click(); setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); },1500); }catch(e){ alert('保存に失敗しました: '+e.message); } }
+    function fnameDate(ts){ var d=ts?new Date(ts):new Date(); return d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+'_'+pad(d.getHours())+pad(d.getMinutes()); }
+    function exportCsv(){
+      if(curView==='detail' && lastDetail){
+        var d=lastDetail, L=[];
+        L.push(['配信タイトル',d.title||'(無題)'].map(csvCell).join(','));
+        L.push(['日時',fmtDate(d.startedAt)+(d.endedAt&&!d.live?(' 〜 '+fmtDate(d.endedAt)):'')].map(csvCell).join(','));
+        L.push(['ユーザー','@'+(d.user||'')].map(csvCell).join(','));
+        L.push(['総いいね',d.totalLikes||0,'総コイン',d.totalCoins||0,'フォロー',d.follows||0].map(csvCell).join(','));
+        L.push('');
+        L.push(['順位','視聴者','ユーザーID','いいね','コイン','視聴時間(分)'].join(','));
+        var parts=(d.participants||[]).slice().sort(function(a,b){ return (b.coins-a.coins)||(b.likes-a.likes); });
+        parts.forEach(function(p,i){ L.push([i+1,csvCell(p.nick||p.user),csvCell(p.user),p.likes||0,p.coins||0,Math.round((p.watchMs||0)/60000)].join(',')); });
+        download('broadcast_'+fnameDate(d.startedAt)+'.csv', L.join('\r\n'));
+      } else {
+        var R=[['配信日時','終了','配信タイトル','ユーザー','総いいね','総コイン','フォロー','新規ギフター'].join(',')];
+        (lastList||[]).forEach(function(b){ R.push([csvCell(fmtDate(b.startedAt)),csvCell(b.live?'受信中':fmtDate(b.endedAt)),csvCell(b.title||'(無題)'),csvCell('@'+(b.user||'')),b.totalLikes||0,b.totalCoins||0,b.follows||0,b.coinUsers||0].join(',')); });
+        download('broadcasts_'+fnameDate()+'.csv', R.join('\r\n'));
+      }
+    }
+    document.getElementById('csvBtn').addEventListener('click',exportCsv);
+    document.getElementById('resetBtn').addEventListener('click',function(){ if(confirm('保存済みの配信データをすべて削除します。よろしいですか？（元に戻せません）')){ if(sock&&sock.connected) sock.emit('resetBroadcasts'); } });
+
+    function start(){
+      if(typeof io==='undefined'){ setTimeout(start,400); return; }   // socket.io 読み込み待ち
+      try{ sock=io({transports:['websocket','polling'],reconnection:true}); }catch(e){ view.innerHTML='<div class="empty">接続を作成できませんでした。</div>'; return; }
+      sock.on('connect',function(){ if(curView==='detail'&&curId) openDetail(curId); else loadList(); });
+      sock.on('connect_error',function(){ if(!view.querySelector('table')) view.innerHTML='<div class="empty">サーバー（LIVE Tools Web）に接続できません。起動しているか確認してください。</div>'; });
+      sock.on('broadcasts',function(list){ try{ if(curView==='list') showList(list); }catch(e){ view.innerHTML='<div class="empty">一覧の表示でエラーが発生しました。</div>'; } });
+      sock.on('broadcastDetail',function(d){ try{ showDetail(d); }catch(e){ view.innerHTML='<div class="empty">詳細の表示でエラーが発生しました。</div>'; } });
+      sock.on('analyticsOn',function(on){ analyticsState=!!on; updateToggle(); });
+      // 受信中の配信を自動更新（一覧表示中のみ・8秒ごと＝負荷軽減。詳細は手動「更新」で）
+      timer=setInterval(function(){ if(sock&&sock.connected && curView==='list') loadList(); },8000);
+    }
+    document.getElementById('refreshBtn').addEventListener('click',function(){ if(curView==='list') loadList(); else if(curId) openDetail(curId); });
+    updateToggle();
+    start();
+  })();
+</script>
+</body></html>

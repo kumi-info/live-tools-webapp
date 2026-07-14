@@ -1,0 +1,930 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>演出オーバーレイ</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>%231ab5ba</text></svg>">
+<script src="/socket.io/socket.io.js"></script>
+<style>
+  /* ===== 共通 ===== */
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{font-family:system-ui,-apple-system,"Segoe UI","Hiragino Kaku Gothic ProN",Meiryo,sans-serif;background:transparent;color:#e7eef0}
+  body.edit{background:#0f171c;min-height:100vh}
+
+  /* ===== OBS描画ステージ（透過・全面）===== */
+  #stage{position:fixed;inset:0;z-index:2147483000;pointer-events:none;overflow:hidden}
+  /* --ox/--oy はルールごとの位置オフセット（編集ページの「位置調整」でドラッグして保存） */
+  .alert{--ox:0px;--oy:0px;position:absolute;left:50%;transform:translate(calc(-50% + var(--ox)),calc(14px + var(--oy)));opacity:0;transition:opacity .45s ease,transform .45s ease;display:flex;flex-direction:column;align-items:center;gap:12px;max-width:96vw}
+  .alert.show{opacity:1;transform:translate(calc(-50% + var(--ox)),var(--oy))}
+  .alert.pos-center{top:50%;transform:translate(calc(-50% + var(--ox)),calc(-50% + 14px + var(--oy)))}
+  .alert.pos-center.show{transform:translate(calc(-50% + var(--ox)),calc(-50% + var(--oy)))}
+  .alert.pos-top{top:6vh}
+  .alert.pos-bottom{bottom:8vh}
+  .alert.pos-full{left:0;top:0;transform:none!important;width:100vw;height:100vh;max-width:none;justify-content:center}
+  .alert.dragging{transition:none;cursor:grabbing!important}
+  .alert .media{display:block;border-radius:14px;overflow:hidden;filter:drop-shadow(0 10px 30px rgba(0,0,0,.45))}
+  .alert.pos-full .media{border-radius:0;filter:none;width:100vw;height:100vh}
+  .alert img.media,.alert video.media{object-fit:contain;background:transparent}
+  .alert.pos-full img.media,.alert.pos-full video.media{object-fit:cover}
+  .alert .cap{font-weight:800;font-size:clamp(20px,3.4vw,44px);text-align:center;color:#fff;text-shadow:0 2px 4px rgba(0,0,0,.6),0 0 14px rgba(0,0,0,.5);line-height:1.25;padding:0 14px}
+  .alert .who{display:flex;align-items:center;gap:12px}
+  .alert .who .av{width:64px;height:64px;border-radius:50%;overflow:hidden;position:relative;background:#1ab5ba;display:flex;align-items:center;justify-content:center;font-weight:800;color:#06343a;font-size:26px;box-shadow:0 4px 14px rgba(0,0,0,.4)}
+  .alert .who .av img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+
+  /* ===== 編集パネル ===== */
+  .panel{display:none;max-width:860px;margin:0 auto;padding:22px 18px 60px}
+  body.edit .panel{display:block}
+  .hdr{display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap}
+  .hdr h1{font-size:20px;margin:0;color:#1ab5ba}
+  .hdr .ver{font-size:11px;color:#6f858d;margin-left:2px}
+  .hdr .sp{flex:1}
+  .conn{font-size:12px;padding:4px 10px;border-radius:999px;background:#16222a;border:1px solid #2a3a42;color:#8aa0a8}
+  .conn.ok{border-color:#1ab5ba;color:#8ff0f2}
+  .conn.err{border-color:#d8556a;color:#ff9aab}
+  .sub{font-size:12.5px;color:#8aa0a8;line-height:1.6;margin:8px 0 14px}
+  .card{background:#16222a;border:1px solid #23343c;border-radius:14px;padding:14px 15px;margin-bottom:14px}
+  .card h2{font-size:14px;margin:0 0 10px;color:#bfe9ea}
+  label{font-size:11.5px;color:#8aa0a8;display:block;margin-bottom:4px}
+  input[type=text],input[type=number],select,textarea{width:100%;background:#0f171c;border:1px solid #2a3a42;color:#e7eef0;border-radius:10px;padding:8px 11px;font-size:13.5px;font-family:inherit}
+  textarea{resize:vertical;min-height:44px}
+  .grid{display:grid;gap:10px}
+  .g2{grid-template-columns:1fr 1fr}
+  .g3{grid-template-columns:1fr 1fr 1fr}
+  @media(max-width:560px){.g2,.g3{grid-template-columns:1fr}}
+  button{background:#1ab5ba;color:#06343a;font-weight:800;border:0;border-radius:10px;padding:9px 14px;font-size:13.5px;cursor:pointer}
+  button:active{transform:translateY(1px)}
+  button.ghost{background:#1b2a31;color:#bfe9ea;border:1px solid #2a3a42}
+  button.warn{background:#26202a;color:#ff9aab;border:1px solid rgba(216,85,106,.5)}
+  button.warn:hover{background:#d8556a;color:#fff}
+  button.sm{padding:6px 10px;font-size:12px}
+  .urlbox{display:flex;gap:8px;align-items:flex-start}
+  .urlbox textarea{font-family:monospace;font-size:11.5px;background:#06181b;border-color:#1ab5ba44;color:#cfeced}
+  /* ルール一覧 */
+  .rule{background:#111c22;border:1px solid #23343c;border-radius:12px;padding:11px 12px;margin-bottom:10px}
+  .rule .top{display:flex;align-items:center;gap:10px}
+  .rule .nm{font-weight:800;font-size:14px;color:#e7eef0;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .rule.off .nm{color:#6f858d}
+  .rule .meta{font-size:11.5px;color:#8aa0a8;margin-top:5px;line-height:1.5}
+  .rule .acts{display:flex;gap:6px;margin-top:9px;flex-wrap:wrap}
+  .badge{display:inline-block;font-size:10.5px;font-weight:800;padding:2px 7px;border-radius:999px;background:#0e343a;color:#7fe6e9;border:1px solid #1ab5ba55;margin-right:5px}
+  .badge.gift{background:#3a2a10;color:#fbdb58;border-color:#fbdb5855}
+  .badge.follow{background:#102a3a;color:#7fbdf6;border-color:#7fbdf655}
+  .badge.like{background:#3a1030;color:#f68fd0;border-color:#f68fd055}
+  .badge.win{background:#0e3a2a;color:#7fe6b0;border-color:#7fe6b055}
+  /* トグルスイッチ */
+  .sw{position:relative;display:inline-block;width:44px;height:25px;flex:0 0 auto;cursor:pointer}
+  .sw input{display:none}
+  .sw .tk{position:absolute;inset:0;background:#2a3a42;border-radius:13px;transition:.15s}
+  .sw .kn{position:absolute;top:3px;left:3px;width:19px;height:19px;background:#e7eef0;border-radius:50%;transition:.15s}
+  .sw input:checked+.tk{background:#1ab5ba}
+  .sw input:checked+.tk+.kn{transform:translateX(19px)}
+  .empty{text-align:center;color:#6f858d;font-size:13px;padding:22px 0}
+  /* 編集モーダル */
+  .modal{position:fixed;inset:0;z-index:2147483600;background:rgba(4,10,13,.72);display:none;align-items:flex-start;justify-content:center;overflow:auto;padding:26px 14px}
+  .modal.open{display:flex}
+  .sheet{background:#16222a;border:1px solid #2a3a42;border-radius:16px;padding:18px;max-width:560px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+  .sheet h2{margin:0 0 12px;font-size:16px;color:#bfe9ea}
+  .field{margin-bottom:12px}
+  .hint{font-size:11px;color:#6f858d;margin-top:4px;line-height:1.5}
+  .rowbtns{display:flex;gap:8px;justify-content:flex-end;margin-top:6px}
+  .libbtns{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+  code{background:#0f171c;border:1px solid #2a3a42;border-radius:5px;padding:1px 5px;font-size:11px;color:#bfe9ea}
+  /* ギフト画像ピッカー */
+  .giftpicker{display:grid;grid-template-columns:repeat(auto-fill,minmax(82px,1fr));gap:8px;max-height:250px;overflow-y:auto;background:#06181b;border:1px solid #1ab5ba33;border-radius:10px;padding:8px;margin-top:6px}
+  .gpick{position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;background:#0e2a30;border:2px solid transparent;border-radius:10px;padding:8px 4px 6px;cursor:pointer;color:#cfeced;font-family:inherit}
+  .gpick:hover{background:#123b34}
+  .gpick.on{border-color:#1ab5ba;background:#123b34}
+  .gpick img{width:42px;height:42px;object-fit:contain}
+  .gpick .ph{font-size:32px;line-height:42px}
+  .gpick .gpn{font-size:11px;font-weight:700;line-height:1.2;max-height:2.4em;overflow:hidden;text-align:center}
+  .gpick .gpd{font-size:10px;color:#fbdb58;font-weight:800}
+  .gpick.on::after{content:'✓';position:absolute;top:3px;right:5px;color:#1ab5ba;font-weight:900;font-size:13px}
+  /* OBSへドラッグ＆ドロップ（他メーターの編集ページと同じ部品） */
+  .dragchip{display:flex;align-items:center;gap:10px;background:#06181b;border:1.5px dashed #1ab5ba66;border-radius:10px;padding:13px 12px;color:#bfe9ea;font-size:13px;font-weight:700;cursor:grab;user-select:none;transition:.15s;margin-bottom:8px}
+  .dragchip:hover{border-color:#1ab5ba99}
+  .dragchip:active{cursor:grabbing;border-color:#1ab5ba;background:#0a2429}
+  .dragchip .dchip-ic{font-size:18px;color:#5fd0d3;line-height:1}
+  .dragchip.copied{border-color:#1ab5ba;color:#eafafa}
+  .flex{display:flex;gap:8px;align-items:center}
+  .rng{display:flex;align-items:center;gap:9px}
+  .rng input[type=range]{flex:1}
+  .rng b{font-size:12px;color:#bfe9ea;min-width:42px;text-align:right}
+</style>
+</head>
+<body>
+<!-- OBSに映る演出レイヤー（編集中もテストでここに表示） -->
+<div id="stage"></div>
+
+<!-- 編集パネル（アプリ内のみ表示。OBSでは非表示・透過） -->
+<div class="panel">
+  <div class="hdr">
+    <h1>🎬 演出オーバーレイ</h1><span class="ver" id="appVer"></span>
+    <span class="sp"></span>
+    <span class="conn" id="conn">接続確認中…</span>
+  </div>
+  <div class="sub">
+    特定の<b>ギフト</b>・<b>新規フォロー</b>・<b>総いいね数</b>・<b>WINカウンターの増減/目標達成</b>に反応して、<b>音楽・動画・画像</b>の演出を再生します。<br>
+    下の「OBS用URL」を OBS の<b>ブラウザソース</b>に貼ると本番配信に出せます。各ルールの「テスト」は、このアプリだけでなく<b>OBS上にも同時に反映</b>されます。「🖱 位置調整」で演出をドラッグして表示位置を自由に決められます。
+  </div>
+
+  <div class="card">
+    <h2>OBS用URL（ブラウザソースに貼り付け）</h2>
+    <div class="dragchip" id="dragUrl" draggable="true" title="OBSのブラウザソースURL欄へドラッグ／クリックでコピー">
+      <span class="dchip-ic">⠿</span>
+      <span class="dchip-tx" id="dragTx">ここを掴んで OBS のURL欄へドロップ</span>
+    </div>
+    <div class="urlbox">
+      <textarea id="obsUrl" readonly rows="2"></textarea>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <button id="copyUrl" class="sm">📋 コピー</button>
+        <button id="openUrl" class="sm ghost">▶ 確認</button>
+      </div>
+    </div>
+    <div class="hint">推奨サイズ：幅1920 × 高さ1080。透過背景なのでレイアウトの一番上（前面）に置いてください。設定を変えると開いているOBSソースへ自動反映されます（貼り直し不要）。</div>
+    <div style="margin-top:12px" class="rng">
+      <label style="margin:0">全体の音量</label>
+      <input type="range" id="masterVol" min="0" max="100"><b id="masterVolV">80%</b>
+    </div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+      <h2 style="margin:0;flex:1">演出ルール</h2>
+      <button id="addRule" class="sm">＋ ルールを追加</button>
+    </div>
+    <div id="ruleList"></div>
+  </div>
+
+  <div class="hint" style="max-width:860px;margin:0 auto;padding:0 4px">
+    ※ 動画/音声/画像のURLは <b>http(s):// で始まる公開URL</b>（mp4 / webm / mp3 / png / gif 等）を推奨します。<br>
+    ※ OBSのブラウザソースは自動再生に対応しています。音が出ない場合はOBSソースのプロパティで「OBSを介して音声を制御」をご確認ください。
+  </div>
+  <div style="text-align:center;margin-top:20px"><a href="/" style="color:#6f858d;font-size:12px;text-decoration:none">← メニューに戻る</a></div>
+</div>
+
+<!-- ルール編集モーダル -->
+<div class="modal" id="ruleModal">
+  <div class="sheet">
+    <h2 id="modalTitle">ルールを編集</h2>
+    <div class="field">
+      <label>ルール名（管理用の呼び名）</label>
+      <input type="text" id="fName" placeholder="例: 大きなギフトで花火演出">
+    </div>
+    <div class="field">
+      <label>トリガー（何が起きたら再生するか）</label>
+      <select id="fTrigger">
+        <option value="gift">特定のギフトを受け取ったとき</option>
+        <option value="follow">新しくフォローされたとき</option>
+        <option value="likeTotal">総いいね数が一定に達したとき</option>
+        <option value="winPlus">WINが増えたとき（WINカウンター連動）</option>
+        <option value="winMinus">WINが減ったとき（WINカウンター連動）</option>
+        <option value="winGoal">WINの目標を達成したとき</option>
+      </select>
+      <div class="hint" id="winTrigHint" style="display:none">WINカウンター（/edit/…/win）の増減・目標と連動します。手動の＋1/−1、コインメーター達成の自動加算、マイクラ連携（CommonWIN）のどれでも動きます。目標値はWINカウンターの「目標WIN数」です。</div>
+    </div>
+
+    <div class="field" data-when="gift">
+      <label>ギフトを一覧から選ぶ（アイコンをタップ。複数選択できます）</label>
+      <input type="text" id="gPickSearch" placeholder="🔍 名前・ID・コイン数で検索">
+      <div class="giftpicker" id="gPick"></div>
+      <div class="hint" id="gPickStat"></div>
+    </div>
+    <div class="field" data-when="gift">
+      <label>選択中のギフト（自動入力・直接編集も可／空欄=すべてのギフト）</label>
+      <input type="text" id="fGiftNames" placeholder="例: Rose, ライオン（空欄=全ギフト）">
+      <div class="hint">上の一覧をタップすると自動で入ります。英語名・日本語名・ギフトIDのどれでも一致します。</div>
+    </div>
+    <div class="field" data-when="gift">
+      <label>最低個数（連打ギフトで、この個数以上のときだけ再生）</label>
+      <input type="number" id="fGiftMin" min="1" value="1">
+    </div>
+
+    <div class="field" data-when="likeTotal">
+      <label>いいねのしきい値（この数に達したら再生）</label>
+      <input type="number" id="fLikeThreshold" min="1" value="1000">
+    </div>
+    <div class="field" data-when="likeTotal">
+      <label class="flex" style="cursor:pointer"><input type="checkbox" id="fLikeRepeat" style="width:auto;flex:0 0 auto"> しきい値ごとに繰り返す（例: 1000ごとに毎回）</label>
+    </div>
+
+    <hr style="border:0;border-top:1px solid #23343c;margin:14px 0">
+
+    <div class="field">
+      <label>演出の種類</label>
+      <select id="fMediaType">
+        <option value="video">動画（mp4 / webm）</option>
+        <option value="image">画像・アニメ映像（png / gif / jpg）</option>
+        <option value="audio">音楽・効果音だけ（mp3 / wav）</option>
+        <option value="none">演出なし（テキストのみ）</option>
+      </select>
+    </div>
+    <div class="field" data-media="media">
+      <label>メディア（ライブラリから選択）</label>
+      <select id="fMedia"></select>
+      <div class="libbtns">
+        <button type="button" class="sm ghost" id="fAddUrl">🔗 URLを追加</button>
+        <button type="button" class="sm ghost" id="fAddFile">📁 ファイルを追加</button>
+        <button type="button" class="sm warn" id="fDelMedia">🗑 選択を削除</button>
+        <input type="file" id="fFileInput" accept="video/*,image/*,audio/*" style="display:none">
+      </div>
+      <div class="hint">一度追加した音/動画/画像はライブラリに保存され、削除するまで何度でも選べます。「ファイル」で選んだものはアプリ内に取り込まれOBSでも再生されます。</div>
+    </div>
+    <div class="field">
+      <label>効果音（任意・演出に重ねて鳴らす）</label>
+      <select id="fSound"></select>
+      <div class="rng" id="fSoundVolRow" style="margin-top:8px"><label style="margin:0;flex:0 0 auto">効果音の音量</label><input type="range" id="fSoundVol" min="0" max="100"><b id="fSoundVolV">100%</b></div>
+    </div>
+    <div class="grid g2">
+      <div class="field" data-media="sound">
+        <label>音量（動画/音楽の本体）</label>
+        <div class="rng"><input type="range" id="fVolume" min="0" max="100"><b id="fVolumeV">100%</b></div>
+      </div>
+      <div class="field">
+        <label>表示時間（秒）<span class="hint" style="display:inline">0=最後まで/自動</span></label>
+        <input type="number" id="fDuration" min="0" step="0.5" value="6">
+      </div>
+    </div>
+    <div class="grid g2" data-media="visual">
+      <div class="field">
+        <label>表示位置</label>
+        <select id="fPosition">
+          <option value="center">中央</option>
+          <option value="top">上</option>
+          <option value="bottom">下</option>
+          <option value="full">全画面いっぱい</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>大きさ（画面幅に対する%）</label>
+        <div class="rng"><input type="range" id="fSize" min="10" max="100"><b id="fSizeV">60%</b></div>
+      </div>
+    </div>
+    <div class="field">
+      <label>表示テキスト（任意）</label>
+      <input type="text" id="fText" placeholder="例: {nick} さんがフォローしてくれました！">
+      <div class="hint">差し込み: <code>{nick}</code>=表示名 / <code>{user}</code>=ユーザーID / <code>{count}</code>=個数</div>
+    </div>
+    <div class="field">
+      <label class="flex" style="cursor:pointer"><input type="checkbox" id="fShowAvatar" style="width:auto;flex:0 0 auto"> 送信者のアイコンを表示する</label>
+    </div>
+    <div class="field">
+      <label>連続再生の間隔（クールダウン秒。0=制限なし）</label>
+      <input type="number" id="fCooldown" min="0" step="1" value="0">
+    </div>
+
+    <div class="rowbtns">
+      <button class="ghost" id="modalTest">▶ テスト再生</button>
+      <button class="ghost" id="modalCancel">キャンセル</button>
+      <button id="modalSave">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- URLでメディアを追加する小モーダル -->
+<div class="modal" id="urlModal">
+  <div class="sheet" style="max-width:430px">
+    <h2>URLでメディアを追加</h2>
+    <div class="field"><label>名前（ライブラリでの表示名）</label><input type="text" id="uName" placeholder="例: 花火エフェクト"></div>
+    <div class="field"><label>種類</label><select id="uType"><option value="video">動画</option><option value="image">画像・アニメ映像</option><option value="audio">音楽・効果音</option></select></div>
+    <div class="field"><label>URL</label><input type="text" id="uUrl" placeholder="https://example.com/effect.mp4"></div>
+    <div class="rowbtns"><button class="ghost" id="uCancel">キャンセル</button><button id="uOk">追加</button></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+const APP_VERSION='1.35.0';
+const SYNC_MODE='alerts';
+
+/* ===== ブート情報（サーバーが /overlay/:id/alert 配信時に注入） ===== */
+const BOOT=window.__LT_BOOT||{id:'',type:'alert',mode:'alerts',sync:'alerts',edit:true,settings:null};
+const params=new URLSearchParams(location.search);
+// 表示専用モード＝URLで決まる（/overlay/…=表示、/edit/…=編集）。window.obsstudio検出には依存しない。
+const OBS=!BOOT.edit;
+
+/* ===== 設定 ===== */
+// 同梱デモメディア（音と映像。最初から使える＝ブリッジが /demo/ で配信）
+const DEMO_VIDEO='/demo/demo-celebrate.gif';   // アニメ映像（透過ループ）
+const DEMO_SOUND='/demo/demo-chime.wav';        // 効果音（キラキラ）
+function defaultMediaLib(){
+  return [
+    {id:'demo-celebrate',name:'デモ映像（お祝いキラキラ）',type:'image',url:DEMO_VIDEO,builtin:true},
+    {id:'demo-chime',name:'デモ効果音（キラキラ）',type:'audio',url:DEMO_SOUND,builtin:true}
+  ];
+}
+function defaultRules(){
+  return [
+    {id:uid(),enabled:true,name:'新規フォロー演出（デモ）',trigger:'follow',giftNames:'',giftMin:1,likeThreshold:1000,likeRepeat:true,
+     mediaType:'image',mediaUrl:DEMO_VIDEO,mediaName:'デモ映像',soundUrl:DEMO_SOUND,soundName:'デモ効果音',soundVolume:100,
+     volume:100,duration:3,size:52,position:'center',text:'{nick} さんフォローありがとう！',showAvatar:true,cooldown:0},
+    {id:uid(),enabled:false,name:'大きなギフトで演出（デモ）',trigger:'gift',giftNames:'',giftMin:5,likeThreshold:1000,likeRepeat:true,
+     mediaType:'image',mediaUrl:DEMO_VIDEO,mediaName:'デモ映像',soundUrl:DEMO_SOUND,soundName:'デモ効果音',soundVolume:100,
+     volume:100,duration:4,size:72,position:'center',text:'{nick} さん ギフトありがとう！',showAvatar:true,cooldown:0},
+    {id:uid(),enabled:false,name:'いいね1000達成（デモ）',trigger:'likeTotal',giftNames:'',giftMin:1,likeThreshold:1000,likeRepeat:true,
+     mediaType:'audio',mediaUrl:DEMO_SOUND,mediaName:'デモ効果音',soundUrl:'',soundName:'',soundVolume:100,
+     volume:100,duration:6,size:52,position:'center',text:'いいね {count} 達成！',showAvatar:false,cooldown:0}
+  ];
+}
+let settings={masterVolume:80,rules:[],mediaLib:[]};
+function uid(){ return 'r'+Math.floor(performance.now()*1000%1e9)+Math.floor((''+Math.abs(Math.sin(Date.now()))).slice(2,6)); }
+function ensureBuiltinMedia(){
+  if(!Array.isArray(settings.mediaLib)) settings.mediaLib=[];
+  defaultMediaLib().forEach(d=>{ if(!settings.mediaLib.some(m=>m&&m.id===d.id)) settings.mediaLib.unshift(d); });
+}
+function loadSettings(){
+  // サーバー保存の設定を土台にする（ブート注入。以後の変更は settings イベントでライブ反映）
+  try{ if(BOOT.settings&&typeof BOOT.settings==='object'){ settings=Object.assign({masterVolume:80,rules:[],mediaLib:[]},BOOT.settings); } }catch(_){}
+  if(!Array.isArray(settings.rules)) settings.rules=[];
+  if(OBS){ if(!Array.isArray(settings.mediaLib)) settings.mediaLib=[]; return; }   // OBS側は受信が正（注入は初期表示用）
+  if(!settings.rules.length) settings.rules=defaultRules();
+  ensureBuiltinMedia();
+}
+function normalizeRule(r){
+  return Object.assign({id:uid(),enabled:true,name:'演出',trigger:'follow',giftNames:'',giftMin:1,likeThreshold:1000,likeRepeat:true,
+    mediaType:'none',mediaUrl:'',mediaName:'',soundUrl:'',soundName:'',soundVolume:100,volume:100,duration:5,size:60,position:'center',
+    offX:0,offY:0,text:'',showAvatar:true,cooldown:0}, r||{});
+}
+function save(){ if(OBS) return; pushSettings(); }   // 設定はサーバー側（プロファイルID単位）に保存
+
+/* ===== ブリッジ接続（イベント受信＋設定同期） ===== */
+let sock=null, ioWait=0, ioTimer=null, likeTotal=null;
+function setConn(t,cls){ const el=document.getElementById('conn'); if(el){ el.textContent=t; el.className='conn'+(cls?(' '+cls):''); } }
+function connect(){
+  if(typeof io==='undefined'){
+    // socket.io 未ロード（サーバー起動待ち等）。あきらめず再試行（同一オリジン配信のためCDNは使わない）。
+    if(!OBS) setConn('接続準備中…');
+    ioWait++;
+    if(ioTimer) clearTimeout(ioTimer);
+    ioTimer=setTimeout(connect, ioWait<25?400:3000);
+    return;
+  }
+  // id/ch でプロファイルのルームに入る（設定・テスト再生の配信先を同じIDに限定）
+  try{ sock=io({query:{id:BOOT.id,ch:SYNC_MODE},transports:['websocket','polling'],reconnection:true,reconnectionDelay:2000}); }
+  catch(e){ if(!OBS) setConn('接続失敗','err'); return; }
+  if(!OBS) setConn('接続中…');
+  sock.on('connect',()=>{
+    if(!OBS){ setConn('接続OK','ok'); pushSettings(true); }
+    else { try{ sock.emit('getSettings',{id:BOOT.id,mode:SYNC_MODE}); }catch(_){} }
+  });
+  sock.on('disconnect',()=>{ if(!OBS) setConn('切断','err'); });
+  sock.on('connect_error',()=>{ if(!OBS) setConn('接続できません','err'); });
+  sock.on('status',d=>{ if(d && d.user!==undefined){ /* 配信者切替時に総いいね基準をリセット */ likeTotal=null; likeLevels={}; } });
+  // WINカウンター連動（サーバーが win/alerts 両ルームへ配信。初回は via なし＝基準合わせのみ）
+  sock.on('winCount',d=>{ if(OBS) handleWin(d); });
+  // サーバーが更新された（版が違う）→ OBS内の古いページを自分でリロードして最新化
+  sock.on('appVersion',v=>{ if(OBS&&v&&v!==APP_VERSION){ setTimeout(()=>{ try{ location.reload(); }catch(_){} },600+Math.floor(Math.random()*1500)); } });
+  // 設定のライブ同期（編集→OBS）
+  sock.on('settings',d=>{ if(OBS && d && d.mode===SYNC_MODE && d.data){ applyLiveSettings(d.data); } });
+  // テスト再生の中継（編集側の「テスト」ボタン→OBSでも再生）
+  sock.on('testAlert',d=>{ if(OBS && d && d.rule){ enqueue(normalizeRule(d.rule), d.ctx||demoCtx()); } });
+  if(!OBS){
+    // 削除結果（編集側）。ファイル取り込みは HTTP アップロード（/api/media）に移行済み
+    sock.on('mediaDeleted',()=>{});
+    // ギフト一覧（画像付き）を受信＝ピッカーを最新化
+    sock.on('giftList',list=>{ mergeGiftCatalog(list); if($('ruleModal')&&$('ruleModal').classList.contains('open')&&$('fTrigger').value==='gift') renderGiftPicker($('gPickSearch')?$('gPickSearch').value:''); });
+  }
+  if(OBS){
+    // ===== 実データ受信 → ルール判定 =====
+    sock.on('follow',d=>{ handleFollow(d); });
+    sock.on('like',d=>{ handleLike(d); });
+    sock.on('giftBatch',arr=>{ if(Array.isArray(arr)) arr.forEach(handleGift); });
+    sock.on('gift',d=>handleGift(d));   // 後方互換（単発）
+  }
+}
+function applyLiveSettings(data){
+  if(!data||typeof data!=='object') return;
+  settings.masterVolume=(typeof data.masterVolume==='number')?data.masterVolume:80;
+  settings.rules=Array.isArray(data.rules)?data.rules.map(normalizeRule):[];
+  settings.mediaLib=Array.isArray(data.mediaLib)?data.mediaLib:[];
+}
+let _pushT=null;
+function pushSettings(now){
+  if(OBS) return;
+  const go=()=>{ _pushT=null; try{
+    if(sock&&sock.connected){ sock.emit('setSettings',{id:BOOT.id,mode:SYNC_MODE,data:settings}); }
+    else{
+      // ソケット未接続でも設定を失わないよう HTTP で保存（フォールバック）
+      fetch('/api/overlay/'+BOOT.id+'/alert/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({data:settings})}).catch(()=>{});
+    }
+  }catch(_){} };
+  if(now){ go(); return; }
+  if(_pushT) return; _pushT=setTimeout(go,250);
+}
+function liveEmit(ev,data){ if(OBS) return; try{ if(sock&&sock.connected) sock.emit(ev,data); }catch(_){} }
+
+/* ===== トリガー判定（OBS側） ===== */
+let likeLevels={};   // ruleId -> 直近に発火したレベル
+function ruleCooldownOk(r){
+  const now=Date.now(); const cd=(parseFloat(r.cooldown)||0)*1000;
+  if(cd>0 && r._last && (now-r._last)<cd) return false;
+  r._last=now; return true;
+}
+function handleFollow(d){
+  const ctx={user:(d&&d.user)||'',nick:(d&&d.nick)||(d&&d.user)||'',avatar:(d&&d.avatar)||'',count:1};
+  settings.rules.forEach(r=>{ if(r.enabled && r.trigger==='follow' && ruleCooldownOk(r)) enqueue(normalizeRule(r),ctx); });
+}
+function giftNameMatch(r,g){
+  const names=(r.giftNames||'').split(',').map(s=>s.trim().toLowerCase()).filter(Boolean);
+  if(!names.length) return true;   // 空=すべてのギフト
+  const cand=[String(g.name||'').toLowerCase(), String(g.id||'').toLowerCase()];
+  return names.some(n=>cand.includes(n) || (g.name&&String(g.name).toLowerCase().includes(n)));
+}
+function handleGift(g){
+  if(!g) return;
+  const rep=parseInt(g.repeat,10)||1;
+  const ctx={user:g.user||'',nick:g.nick||g.user||'',avatar:g.avatar||'',count:rep,giftName:g.name||''};
+  settings.rules.forEach(r=>{
+    if(!r.enabled||r.trigger!=='gift') return;
+    if(rep < (parseInt(r.giftMin,10)||1)) return;
+    if(!giftNameMatch(r,g)) return;
+    if(ruleCooldownOk(r)) enqueue(normalizeRule(r),ctx);
+  });
+}
+// WINカウンター連動（winPlus/winMinus/winGoal）。±WIN は via:"add"（＋1/−1・自動加算・マイクラ連携）のみ
+// 反応し、リセット・数値の直接指定（via:"set"）では鳴らさない。目標達成はどちらでも判定する。
+let winTotal=null;
+function handleWin(d){
+  if(!d||d.total==null) return;
+  const prev=winTotal;
+  winTotal=d.total|0;
+  if(prev==null||!d.via) return;   // 初回・再接続直後は基準合わせのみ
+  const delta=winTotal-prev;
+  const g=parseInt(d.goal,10)||0;
+  const ctx={user:'',nick:'',avatar:'',count:Math.abs(delta)||1};
+  settings.rules.forEach(r=>{
+    if(!r.enabled) return;
+    if(r.trigger==='winGoal'){ if(g>0&&prev<g&&winTotal>=g&&ruleCooldownOk(r)) enqueue(normalizeRule(r),ctx); return; }
+    if(d.via!=='add') return;
+    if(r.trigger==='winPlus'&&delta>0&&ruleCooldownOk(r)) enqueue(normalizeRule(r),ctx);
+    else if(r.trigger==='winMinus'&&delta<0&&ruleCooldownOk(r)) enqueue(normalizeRule(r),ctx);
+  });
+}
+function handleLike(d){
+  const t=(d&&typeof d.totalLikeCount==='number')?d.totalLikeCount:((d&&typeof d.total==='number')?d.total:null);
+  if(t==null) return;
+  const first=(likeTotal==null);
+  likeTotal=t;
+  settings.rules.forEach(r=>{
+    if(!r.enabled||r.trigger!=='likeTotal') return;
+    const thr=parseInt(r.likeThreshold,10)||0; if(thr<=0) return;
+    const level=Math.floor(t/thr);
+    if(first){ likeLevels[r.id]=level; return; }   // 接続時点の到達分では鳴らさない（基準合わせ）
+    const prev=(likeLevels[r.id]!=null)?likeLevels[r.id]:0;
+    if(level>prev){
+      likeLevels[r.id]=level;
+      if(!r.likeRepeat && prev>=1) return;                 // 繰り返さない設定なら一度だけ
+      const ctx={user:'',nick:'',avatar:'',count:r.likeRepeat?(level*thr):thr};
+      if(ruleCooldownOk(r)) enqueue(normalizeRule(r),ctx);
+    }
+  });
+}
+
+/* ===== 演出の再生（キュー制御） ===== */
+const queue=[]; let playing=false;
+function demoCtx(){ return {user:'test_user',nick:'テスト太郎',avatar:'',count:10}; }
+function enqueue(rule,ctx){ queue.push({rule,ctx:ctx||demoCtx()}); if(!playing) playNext(); }
+function playNext(){
+  if(!queue.length){ playing=false; return; }
+  playing=true;
+  const {rule,ctx}=queue.shift();
+  try{ renderAlert(rule,ctx,()=>{ playing=false; playNext(); }); }
+  catch(e){ playing=false; playNext(); }
+}
+function fmtText(t,ctx){ return String(t||'').replace(/\{nick\}/g,ctx.nick||'').replace(/\{user\}/g,ctx.user||'').replace(/\{count\}/g,String(ctx.count!=null?ctx.count:'')); }
+function volumeFor(rule){ const mv=(settings.masterVolume!=null?settings.masterVolume:80)/100; const rv=(rule.volume!=null?rule.volume:100)/100; return Math.max(0,Math.min(1,mv*rv)); }
+function renderAlert(rule,ctx,done,opts){
+  opts=opts||{};
+  const stage=document.getElementById('stage');
+  const box=document.createElement('div');
+  box.className='alert pos-'+(rule.position||'center');
+  // ルールごとの位置オフセット（編集ページの「位置調整」でドラッグ保存した値）
+  box.style.setProperty('--ox',(parseFloat(rule.offX)||0)+'px');
+  box.style.setProperty('--oy',(parseFloat(rule.offY)||0)+'px');
+  if((rule.position||'center')!=='full'){ box.style.width=(Math.max(10,Math.min(100,parseInt(rule.size,10)||60)))+'vw'; }
+  let mediaEl=null, soundEl=null, finished=false;
+  const vol=volumeFor(rule);
+  const dur=(parseFloat(rule.duration)||0);
+
+  // アイコン＋テキスト（メディアの上）
+  const cap=fmtText(rule.text,ctx);
+  if(rule.showAvatar && (ctx.avatar||ctx.nick)){
+    const who=document.createElement('div'); who.className='who';
+    const av=document.createElement('div'); av.className='av';
+    const initial=(ctx.nick||ctx.user||'?').trim().charAt(0)||'?';
+    av.textContent=initial;
+    if(ctx.avatar){ const im=document.createElement('img'); im.src=ctx.avatar; im.onerror=function(){ this.remove(); }; av.appendChild(im); }
+    who.appendChild(av); box.appendChild(who);
+  }
+
+  // メディア本体
+  const type=rule.mediaType||'none', url=(rule.mediaUrl||'').trim();
+  if(type==='video' && url){
+    mediaEl=document.createElement('video'); mediaEl.className='media';
+    mediaEl.src=url; mediaEl.autoplay=true; mediaEl.muted=false; mediaEl.volume=vol; mediaEl.playsInline=true;
+    if((rule.position||'center')!=='full'){ mediaEl.style.width='100%'; mediaEl.style.height='auto'; }
+    box.appendChild(mediaEl);
+  } else if(type==='image' && url){
+    mediaEl=document.createElement('img'); mediaEl.className='media'; mediaEl.src=url;
+    if((rule.position||'center')!=='full'){ mediaEl.style.width='100%'; mediaEl.style.height='auto'; }
+    box.appendChild(mediaEl);
+  } else if(type==='audio' && url){
+    mediaEl=document.createElement('audio'); mediaEl.src=url; mediaEl.autoplay=true; mediaEl.volume=vol; mediaEl.style.display='none';
+    box.appendChild(mediaEl);
+  }
+
+  // 効果音（任意・演出に重ねて鳴らす。動画/音楽の本体とは別）
+  const surl=(rule.soundUrl||'').trim();
+  if(surl && surl!==url){
+    soundEl=document.createElement('audio'); soundEl.src=surl; soundEl.autoplay=true;
+    const mv=(settings.masterVolume!=null?settings.masterVolume:80)/100; const sv=(rule.soundVolume!=null?rule.soundVolume:100)/100;
+    soundEl.volume=Math.max(0,Math.min(1,mv*sv)); soundEl.style.display='none'; box.appendChild(soundEl);
+  }
+
+  if(cap){ const c=document.createElement('div'); c.className='cap'; c.textContent=cap; box.appendChild(c); }
+
+  stage.appendChild(box);
+
+  // 位置調整プレビュー：終了タイマーなし・音なし・ドラッグできる状態で表示して box を返す
+  if(opts.preview){
+    box.classList.add('show');
+    if(mediaEl){ try{ mediaEl.muted=true; mediaEl.volume=0; if('loop' in mediaEl) mediaEl.loop=true; const p=mediaEl.play&&mediaEl.play(); if(p&&p.catch) p.catch(()=>{}); }catch(_){} }
+    if(soundEl){ try{ soundEl.muted=true; soundEl.pause(); }catch(_){} }
+    box.style.pointerEvents='auto';
+    box.style.cursor='grab';
+    return box;
+  }
+
+  requestAnimationFrame(()=>box.classList.add('show'));
+
+  function endNow(){
+    if(finished) return; finished=true;
+    box.classList.remove('show');
+    setTimeout(()=>{ try{ if(mediaEl){ mediaEl.pause&&mediaEl.pause(); mediaEl.src=''; } }catch(_){} try{ if(soundEl){ soundEl.pause(); soundEl.src=''; } }catch(_){} try{ box.remove(); }catch(_){} if(typeof done==='function') done(); }, 480);
+  }
+  // 再生開始（自動再生がブロックされた場合の保険）
+  if(mediaEl && (type==='video'||type==='audio')){ try{ const p=mediaEl.play(); if(p&&p.catch) p.catch(()=>{}); }catch(_){} }
+  if(soundEl){ try{ const p=soundEl.play(); if(p&&p.catch) p.catch(()=>{}); }catch(_){} }
+
+  // 終了タイミング：duration>0 は時間で、0 は動画/音声の ended、画像は既定6秒
+  if(dur>0){ setTimeout(endNow, dur*1000); }
+  else if(type==='video'||type==='audio'){ if(mediaEl){ mediaEl.addEventListener('ended',endNow); mediaEl.addEventListener('error',endNow); } setTimeout(endNow, 60000); }
+  else { setTimeout(endNow, 6000); }   // 画像/演出なしで時間0のとき
+}
+
+/* ===== 編集UI ===== */
+function $(id){ return document.getElementById(id); }
+function triggerLabel(r){
+  if(r.trigger==='gift'){ const n=(r.giftNames||'').trim(); return '<span class="badge gift">ギフト</span>'+(n?('「'+n+'」×'+(r.giftMin||1)+'以上'):'すべてのギフト'); }
+  if(r.trigger==='follow') return '<span class="badge follow">フォロー</span>新規フォロー時';
+  if(r.trigger==='likeTotal') return '<span class="badge like">いいね</span>'+(r.likeThreshold||0)+(r.likeRepeat?' ごと':' 到達で1回');
+  if(r.trigger==='winPlus') return '<span class="badge win">WIN</span>WINが増えたとき';
+  if(r.trigger==='winMinus') return '<span class="badge win">WIN</span>WINが減ったとき';
+  if(r.trigger==='winGoal') return '<span class="badge win">WIN</span>目標WIN数に到達したとき';
+  return '';
+}
+function mediaLabel(r){
+  const m={video:'動画',audio:'音楽',image:'画像・映像',none:'テキストのみ'}[r.mediaType]||'-';
+  const u=(r.mediaUrl||'').trim();
+  let s=m+(r.mediaType!=='none'?(u?(r.mediaName?('：'+r.mediaName):''):'（未選択）'):'');
+  if((r.soundUrl||'').trim()) s+='　＋効果音'+(r.soundName?('：'+r.soundName):'');
+  return s;
+}
+function renderRules(){
+  const list=$('ruleList'); if(!list) return;
+  list.innerHTML='';
+  if(!settings.rules.length){ list.innerHTML='<div class="empty">まだルールがありません。「＋ ルールを追加」で作成してください。</div>'; return; }
+  settings.rules.forEach((r,i)=>{
+    const card=document.createElement('div'); card.className='rule'+(r.enabled?'':' off');
+    card.innerHTML=
+      '<div class="top">'+
+        '<label class="sw"><input type="checkbox" '+(r.enabled?'checked':'')+' data-en="'+i+'"><span class="tk"></span><span class="kn"></span></label>'+
+        '<div class="nm">'+escapeHtml(r.name||'（無名）')+'</div>'+
+      '</div>'+
+      '<div class="meta">'+triggerLabel(r)+'<br>▶ '+escapeHtml(mediaLabel(r))+'</div>'+
+      '<div class="acts">'+
+        '<button class="sm ghost" data-test="'+i+'">▶ テスト</button>'+
+        '<button class="sm ghost" data-pos="'+i+'">🖱 位置調整</button>'+
+        '<button class="sm ghost" data-edit="'+i+'">✎ 編集</button>'+
+        '<button class="sm warn" data-del="'+i+'">🗑 削除</button>'+
+      '</div>';
+    list.appendChild(card);
+  });
+}
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function escapeAttr(s){ return String(s).replace(/"/g,'&quot;'); }
+
+/* --- メディアライブラリ（アップした音/動画/画像を保存・選択・削除） --- */
+function mediaItems(type){ const lib=Array.isArray(settings.mediaLib)?settings.mediaLib:[]; return type?lib.filter(m=>m&&m.type===type):lib; }
+function libItemByUrl(u){ return (settings.mediaLib||[]).find(m=>m&&m.url===u); }
+function optionsFor(type){ let o='<option value="">（未選択）</option>'; mediaItems(type).forEach(m=>{ o+='<option value="'+escapeAttr(m.url)+'">'+escapeHtml(m.name)+(m.builtin?'（同梱）':'')+'</option>'; }); return o; }
+function populateMediaPickers(){
+  const mt=$('fMediaType').value;
+  $('fMedia').innerHTML=optionsFor(mt==='none'?null:mt);
+  let s='<option value="">（効果音なし）</option>'; mediaItems('audio').forEach(m=>{ s+='<option value="'+escapeAttr(m.url)+'">'+escapeHtml(m.name)+(m.builtin?'（同梱）':'')+'</option>'; });
+  $('fSound').innerHTML=s;
+}
+function addLibItem(item){ if(!item||!item.url) return; settings.mediaLib=settings.mediaLib||[]; if(!settings.mediaLib.some(m=>m.url===item.url)) settings.mediaLib.push(item); save(); }
+function delLibItem(url){
+  const it=libItemByUrl(url); if(!it) return;
+  if(it.builtin){ alert('同梱のデモメディアは削除できません。'); return; }
+  if(!confirm('このメディアをライブラリから削除しますか？\n（このメディアを使っている演出は「未選択」に戻ります）')) return;
+  settings.mediaLib=(settings.mediaLib||[]).filter(m=>m.url!==url);
+  (settings.rules||[]).forEach(r=>{ if(r.mediaUrl===url){ r.mediaUrl=''; r.mediaName=''; } if(r.soundUrl===url){ r.soundUrl=''; r.soundName=''; } });
+  liveEmit('deleteMedia',{url}); save(); renderRules();
+}
+
+/* --- ギフト画像ピッカー（特定ギフトを一覧から選ぶ） --- */
+const GIMG='https://p16-webcast.tiktokcdn.com/img/maliva/webcast-va/';
+// 接続前・キャッシュ無しでも画像で選べるよう、よく使うギフトを内蔵（TikTok接続で最新一覧に更新）
+const BUILTIN_GIFTS=[
+  {name:'TikTok',giftName:'TikTok',diamond:1,image:GIMG+'802a21ae29f9fae5abe3693de9f874bd~tplv-obj.webp'},
+  {name:'バラ',giftName:'Rose',diamond:1,image:GIMG+'eba3a9bb85c33e017f3648eaf88d7189~tplv-obj.webp'},
+  {name:'フィンガーハート',giftName:'Finger Heart',diamond:5,image:GIMG+'a4c4dc437fd3a6632aba149769491f49.png~tplv-obj.webp'},
+  {name:'友情ネックレス',giftName:'Friendship Necklace',diamond:10,image:GIMG+'resource/e033c3f28632e233bebac1668ff66a2f.png~tplv-obj.webp'},
+  {name:'香水',giftName:'Perfume',diamond:20,image:GIMG+'20b8f61246c7b6032777bb81bf4ee055~tplv-obj.webp'},
+  {name:'ドーナッツ',giftName:'Doughnut',diamond:30,image:GIMG+'4e7ad6bdf0a1d860c538f38026d4e812~tplv-obj.webp'},
+  {name:'帽子と口ひげ',giftName:'Hat and Mustache',diamond:99,image:GIMG+'2f1e4f3f5c728ffbfa35705b480fdc92~tplv-obj.webp'},
+  {name:'ハートポーズ',giftName:'Heart Me',diamond:5,image:GIMG+'6cd022271dc4669d182cad856384870f~tplv-obj.webp'},
+  {name:'ハート',giftName:'Heart',diamond:5,image:GIMG+'934b5a10dee8376df5870a61d2ea5cb6.png~tplv-obj.webp'},
+  {name:'コーギー',giftName:'Corgi',diamond:5,image:GIMG+'148eef0884fdb12058d1c6897d1e02b9~tplv-obj.webp'}
+];
+const GIFT_CAT_KEY='ltk_gift_catalog';   // メーターと共有（同一オリジン）＝一度取得すれば画像で選べる
+let giftCatalog=[];
+function loadGiftCatalog(){ try{ const c=JSON.parse(localStorage.getItem(GIFT_CAT_KEY)||'[]'); if(Array.isArray(c)&&c.length) giftCatalog=c; }catch(_){} if(!giftCatalog.length) giftCatalog=BUILTIN_GIFTS.slice(); }
+function saveGiftCatalog(){ try{ localStorage.setItem(GIFT_CAT_KEY,JSON.stringify(giftCatalog)); }catch(_){} }
+function mergeGiftCatalog(list){
+  if(!Array.isArray(list)||!list.length) return;
+  const ids=new Set(list.map(c=>String(c.id)));
+  const keep=giftCatalog.filter(c=>c&&c.id!=null&&!ids.has(String(c.id)));   // 新一覧に無い既存（ID付き）を残す
+  giftCatalog=list.concat(keep); saveGiftCatalog();
+}
+function giftTokens(g){ return [g.name,g.giftName,g.id].filter(x=>x!=null&&x!=='').map(x=>String(x).toLowerCase()); }
+function selGiftSet(){ return new Set((($('fGiftNames')||{}).value||'').split(',').map(s=>s.trim().toLowerCase()).filter(Boolean)); }
+function isGiftSel(g){ const set=selGiftSet(); if(!set.size) return false; return giftTokens(g).some(t=>set.has(t)); }
+function toggleGift(g){
+  const raw=(($('fGiftNames').value)||'').split(',').map(s=>s.trim()).filter(Boolean);
+  const toks=giftTokens(g);
+  const already=raw.some(r=>toks.includes(r.toLowerCase()));
+  const next=already?raw.filter(r=>!toks.includes(r.toLowerCase())):raw.concat([g.giftName||g.name||String(g.id)]);
+  $('fGiftNames').value=next.join(', ');
+  renderGiftPicker($('gPickSearch')?$('gPickSearch').value:'');
+}
+function renderGiftPicker(q){
+  const pick=$('gPick'); if(!pick) return;
+  q=(q||'').trim().toLowerCase();
+  let list=giftCatalog.slice().sort((a,b)=>(a.diamond||0)-(b.diamond||0));
+  if(q) list=list.filter(g=>String(g.name||'').toLowerCase().includes(q)||String(g.giftName||'').toLowerCase().includes(q)||String(g.id||'').toLowerCase().includes(q)||String(g.diamond||'').includes(q));
+  const stat=$('gPickStat'); const onlyBuiltin=giftCatalog.every(g=>g&&g.id==null);
+  if(stat) stat.textContent='一覧: '+giftCatalog.length+'件'+(onlyBuiltin?'（よく使うギフトを表示中。TikTokに接続すると全ギフトに更新されます）':'');
+  if(!list.length){ pick.innerHTML='<div class="hint">該当するギフトがありません</div>'; pick._list=[]; return; }
+  pick.innerHTML=list.map((g,i)=>{
+    const on=isGiftSel(g)?' on':'';
+    const img=g.image?'<img src="'+escapeAttr(g.image)+'" onerror="this.replaceWith(Object.assign(document.createElement(\'span\'),{className:\'ph\',textContent:\'🎁\'}))">':'<span class="ph">🎁</span>';
+    return '<button type="button" class="gpick'+on+'" data-gi="'+i+'">'+img+'<span class="gpn">'+escapeHtml(g.name||g.giftName||('ID:'+g.id))+'</span><span class="gpd">💎'+(g.diamond||0)+'</span></button>';
+  }).join('');
+  pick._list=list;
+}
+
+/* --- モーダル --- */
+let editIdx=-1;
+function openModal(idx){
+  editIdx=idx;
+  const r=(idx>=0)?settings.rules[idx]:normalizeRule({name:'新しい演出'});
+  $('modalTitle').textContent=(idx>=0)?'ルールを編集':'ルールを追加';
+  $('fName').value=r.name||''; $('fTrigger').value=r.trigger||'follow';
+  $('fGiftNames').value=r.giftNames||''; $('fGiftMin').value=r.giftMin||1;
+  if($('gPickSearch')) $('gPickSearch').value=''; renderGiftPicker('');
+  $('fLikeThreshold').value=r.likeThreshold||1000; $('fLikeRepeat').checked=!!r.likeRepeat;
+  $('fMediaType').value=r.mediaType||'none';
+  $('fVolume').value=r.volume!=null?r.volume:100; $('fVolumeV').textContent=($('fVolume').value)+'%';
+  $('fSoundVol').value=r.soundVolume!=null?r.soundVolume:100; $('fSoundVolV').textContent=($('fSoundVol').value)+'%';
+  $('fDuration').value=r.duration!=null?r.duration:6;
+  $('fPosition').value=r.position||'center'; $('fSize').value=r.size!=null?r.size:60; $('fSizeV').textContent=($('fSize').value)+'%';
+  $('fText').value=r.text||''; $('fShowAvatar').checked=r.showAvatar!==false; $('fCooldown').value=r.cooldown||0;
+  populateMediaPickers();
+  $('fMedia').value=r.mediaUrl||''; $('fSound').value=r.soundUrl||'';
+  updateModalVis();
+  $('ruleModal').classList.add('open');
+}
+function closeModal(){ $('ruleModal').classList.remove('open'); editIdx=-1; }
+function readModal(){
+  return normalizeRule({
+    id:(editIdx>=0?settings.rules[editIdx].id:uid()),
+    enabled:(editIdx>=0?settings.rules[editIdx].enabled:true),
+    offX:(editIdx>=0?settings.rules[editIdx].offX:0),   // 位置調整の保存値は編集で消さない
+    offY:(editIdx>=0?settings.rules[editIdx].offY:0),
+    name:$('fName').value.trim()||'演出', trigger:$('fTrigger').value,
+    giftNames:$('fGiftNames').value.trim(), giftMin:Math.max(1,parseInt($('fGiftMin').value,10)||1),
+    likeThreshold:Math.max(1,parseInt($('fLikeThreshold').value,10)||1000), likeRepeat:$('fLikeRepeat').checked,
+    mediaType:$('fMediaType').value,
+    mediaUrl:($('fMediaType').value==='none')?'':$('fMedia').value,
+    mediaName:(($('fMediaType').value==='none'||!$('fMedia').value)?'':(($('fMedia').selectedOptions[0]||{}).textContent||'').replace(/（同梱）$/,'')),
+    soundUrl:$('fSound').value,
+    soundName:($('fSound').value?((($('fSound').selectedOptions[0]||{}).textContent||'').replace(/（同梱）$/,'')):''),
+    soundVolume:parseInt($('fSoundVol').value,10),
+    volume:parseInt($('fVolume').value,10), duration:Math.max(0,parseFloat($('fDuration').value)||0),
+    position:$('fPosition').value, size:parseInt($('fSize').value,10),
+    text:$('fText').value, showAvatar:$('fShowAvatar').checked, cooldown:Math.max(0,parseFloat($('fCooldown').value)||0)
+  });
+}
+function updateModalVis(){
+  const trig=$('fTrigger').value, mt=$('fMediaType').value;
+  document.querySelectorAll('[data-when]').forEach(el=>{ el.style.display=(el.getAttribute('data-when')===trig)?'':'none'; });
+  const wh=$('winTrigHint'); if(wh) wh.style.display=(trig==='winPlus'||trig==='winMinus'||trig==='winGoal')?'':'none';
+  document.querySelectorAll('[data-media]').forEach(el=>{
+    const k=el.getAttribute('data-media');
+    let show=true;
+    if(k==='media') show=(mt!=='none');
+    if(k==='sound') show=(mt==='video'||mt==='audio');
+    if(k==='visual') show=(mt==='video'||mt==='image');
+    el.style.display=show?'':'none';
+  });
+  $('fSoundVolRow').style.display=$('fSound').value?'':'none';
+}
+
+/* ===== OBS用URL（短い固定形。設定はサーバー保存＝変えてもURL不変） ===== */
+function buildUrl(){ return location.origin+'/overlay/'+BOOT.id+'/'+(BOOT.type||'alert'); }
+function refreshUrl(){ const t=$('obsUrl'); if(t) t.value=buildUrl(); }
+
+/* ===== 位置調整モード（演出をドラッグして表示位置をルールに保存） ===== */
+let posBox=null, posBar=null, posIdx=-1;
+function curOff(){
+  if(!posBox) return {x:0,y:0};
+  return {x:parseFloat(posBox.style.getPropertyValue('--ox'))||0, y:parseFloat(posBox.style.getPropertyValue('--oy'))||0};
+}
+function setOff(x,y){
+  if(!posBox) return;
+  posBox.style.setProperty('--ox',Math.round(x)+'px');
+  posBox.style.setProperty('--oy',Math.round(y)+'px');
+}
+function openPosAdjust(idx){
+  closePosAdjust(false);
+  const r=normalizeRule(settings.rules[idx]);
+  if((r.position||'center')==='full'){ alert('「全画面いっぱい」の演出は画面全体に表示されるため、位置調整はありません。'); return; }
+  posIdx=idx;
+  const ctx=demoCtx();
+  if(r.trigger==='likeTotal') ctx.count=r.likeThreshold;
+  if(r.trigger==='gift') ctx.count=Math.max(r.giftMin,1);
+  posBox=renderAlert(r,ctx,null,{preview:true});
+
+  // ドラッグ（pointer系。開始時のオフセット＋移動量を --ox/--oy に反映）
+  let drag=null;
+  posBox.addEventListener('pointerdown',e=>{
+    e.preventDefault();
+    const o=curOff();
+    drag={sx:e.clientX,sy:e.clientY,ox:o.x,oy:o.y};
+    posBox.classList.add('dragging');
+    try{ posBox.setPointerCapture(e.pointerId); }catch(_){}
+  });
+  posBox.addEventListener('pointermove',e=>{
+    if(!drag) return;
+    setOff(drag.ox+(e.clientX-drag.sx), drag.oy+(e.clientY-drag.sy));
+  });
+  const endDrag=()=>{ drag=null; if(posBox) posBox.classList.remove('dragging'); };
+  posBox.addEventListener('pointerup',endDrag);
+  posBox.addEventListener('pointercancel',endDrag);
+
+  // 操作バー（保存 / 中央に戻す / キャンセル）
+  posBar=document.createElement('div');
+  posBar.style.cssText='position:fixed;left:50%;top:12px;transform:translateX(-50%);z-index:2147483600;display:flex;gap:8px;align-items:center;background:#16222a;border:1px solid #1ab5ba;border-radius:12px;padding:8px 12px;box-shadow:0 8px 30px rgba(0,0,0,.55)';
+  posBar.innerHTML='<span style="font-size:12.5px;color:#bfe9ea;font-weight:700">🖱 演出をドラッグして位置を調整</span>'+
+    '<button class="sm" id="posSave">✓ この位置で保存</button>'+
+    '<button class="sm ghost" id="posCenter">↺ 中央に戻す</button>'+
+    '<button class="sm ghost" id="posCancel">✕ キャンセル</button>';
+  document.body.appendChild(posBar);
+  posBar.querySelector('#posSave').onclick=()=>closePosAdjust(true);
+  posBar.querySelector('#posCenter').onclick=()=>setOff(0,0);
+  posBar.querySelector('#posCancel').onclick=()=>closePosAdjust(false);
+}
+function closePosAdjust(saveIt){
+  if(posBox){
+    if(saveIt&&posIdx>=0&&settings.rules[posIdx]){
+      const o=curOff();
+      settings.rules[posIdx].offX=o.x;
+      settings.rules[posIdx].offY=o.y;
+      save();
+    }
+    try{ posBox.querySelectorAll('video,audio').forEach(m=>{ m.pause&&m.pause(); m.src=''; }); }catch(_){}
+    try{ posBox.remove(); }catch(_){}
+  }
+  if(posBar){ try{ posBar.remove(); }catch(_){} }
+  posBox=null; posBar=null; posIdx=-1;
+}
+
+/* ===== テスト再生（ローカル＋OBS） ===== */
+function testRule(r){
+  const rule=normalizeRule(r); const ctx=demoCtx();
+  if(rule.trigger==='likeTotal') ctx.count=rule.likeThreshold;
+  if(rule.trigger==='gift') ctx.count=Math.max(rule.giftMin,1);
+  enqueue(rule,ctx);                          // このアプリのステージで再生
+  liveEmit('testAlert',{rule:rule,ctx:ctx});  // OBS側でも再生（ブリッジが中継）
+}
+
+/* ===== 初期化 ===== */
+function bindEditor(){
+  // 古いサーバー検出：APP_VERSION はサーバーが自分の版に書き換える。この値と違う＝
+  // アプリ（start.bat）が更新後に再起動されておらず、WIN連動トリガー等が動かない。
+  const PAGE_VERSION='0.19.2';
+  if(APP_VERSION!==PAGE_VERSION){
+    const warn=document.createElement('div');
+    warn.style.cssText='max-width:860px;margin:0 auto 14px;background:#3a2412;border:1.5px solid #fbdb58;border-radius:10px;padding:10px 12px;font-size:12.5px;color:#ffe9a8;line-height:1.7';
+    warn.innerHTML='⚠ <b>アプリの再起動が必要です。</b>古いサーバー（v'+APP_VERSION+'）が動いているため、WIN連動トリガーなどの新機能が動作しません。<b>start.bat をもう一度実行してください</b>（古いサーバーは自動で終了して入れ替わります。ウィンドウが見当たらなくても大丈夫です）。';
+    const panel=document.querySelector('.panel');
+    const firstCard=panel.querySelector('.card');
+    panel.insertBefore(warn,firstCard);
+  }
+  refreshUrl();
+  loadGiftCatalog();
+  $('masterVol').value=settings.masterVolume; $('masterVolV').textContent=settings.masterVolume+'%';
+  renderRules();
+
+  $('copyUrl').addEventListener('click',async()=>{ refreshUrl(); const u=$('obsUrl').value; try{ await navigator.clipboard.writeText(u); }catch(_){ const ta=$('obsUrl'); ta.focus(); ta.select(); try{document.execCommand('copy');}catch(__){} } const b=$('copyUrl'); const o=b.textContent; b.textContent='✓ コピー'; setTimeout(()=>b.textContent=o,1300); });
+  // OBSへドラッグ＆ドロップ（クリックでもコピーできる。他メーターと同じ操作感）
+  $('dragUrl').addEventListener('dragstart',e=>{ try{ e.dataTransfer.setData('text/uri-list',buildUrl()); e.dataTransfer.setData('text/plain',buildUrl()); }catch(_){} });
+  $('dragUrl').addEventListener('click',()=>{
+    refreshUrl(); const u=buildUrl();
+    (navigator.clipboard?navigator.clipboard.writeText(u):Promise.reject()).catch(()=>{ const ta=$('obsUrl'); ta.focus(); ta.select(); try{document.execCommand('copy');}catch(_){} });
+    const d=$('dragUrl'); d.classList.add('copied'); $('dragTx').textContent='✓ URLをコピーしました';
+    setTimeout(()=>{ d.classList.remove('copied'); $('dragTx').textContent='ここを掴んで OBS のURL欄へドロップ'; },1400);
+  });
+  $('openUrl').addEventListener('click',()=>{ const u=buildUrl(); window.open(u+'?preview=1','_blank'); });
+  $('masterVol').addEventListener('input',e=>{ settings.masterVolume=parseInt(e.target.value,10); $('masterVolV').textContent=settings.masterVolume+'%'; save(); });
+  $('addRule').addEventListener('click',()=>openModal(-1));
+
+  // ルール一覧のボタン（委譲）
+  $('ruleList').addEventListener('click',e=>{
+    const t=e.target.closest('button'); const en=e.target.closest('input[data-en]');
+    if(en){ const i=+en.getAttribute('data-en'); settings.rules[i].enabled=en.checked; save(); renderRules(); return; }
+    if(!t) return;
+    if(t.hasAttribute('data-test')){ testRule(settings.rules[+t.getAttribute('data-test')]); }
+    else if(t.hasAttribute('data-pos')){ openPosAdjust(+t.getAttribute('data-pos')); }
+    else if(t.hasAttribute('data-edit')){ openModal(+t.getAttribute('data-edit')); }
+    else if(t.hasAttribute('data-del')){ const i=+t.getAttribute('data-del'); if(confirm('このルールを削除しますか？')){ settings.rules.splice(i,1); save(); renderRules(); } }
+  });
+
+  // モーダル
+  $('fTrigger').addEventListener('change',updateModalVis);
+  $('fMediaType').addEventListener('change',()=>{ const keep=$('fMedia').value; populateMediaPickers(); $('fMedia').value=keep; updateModalVis(); });
+  $('fVolume').addEventListener('input',e=>$('fVolumeV').textContent=e.target.value+'%');
+  $('fSoundVol').addEventListener('input',e=>$('fSoundVolV').textContent=e.target.value+'%');
+  $('fSize').addEventListener('input',e=>$('fSizeV').textContent=e.target.value+'%');
+  $('fSound').addEventListener('change',()=>{ $('fSoundVolRow').style.display=$('fSound').value?'':'none'; });
+
+  // ギフト画像ピッカー
+  $('gPickSearch').addEventListener('input',e=>renderGiftPicker(e.target.value));
+  $('gPick').addEventListener('click',e=>{ const b=e.target.closest('.gpick'); if(!b) return; const list=$('gPick')._list||[]; const g=list[+b.getAttribute('data-gi')]; if(g) toggleGift(g); });
+  $('fGiftNames').addEventListener('input',()=>renderGiftPicker($('gPickSearch')?$('gPickSearch').value:''));
+
+  // メディアライブラリ操作
+  $('fAddUrl').addEventListener('click',()=>{ $('uName').value=''; $('uUrl').value=''; $('uType').value=($('fMediaType').value==='none'?'video':$('fMediaType').value); $('urlModal').classList.add('open'); });
+  $('uCancel').addEventListener('click',()=>$('urlModal').classList.remove('open'));
+  $('urlModal').addEventListener('click',e=>{ if(e.target===$('urlModal')) $('urlModal').classList.remove('open'); });
+  $('uOk').addEventListener('click',()=>{
+    const url=$('uUrl').value.trim(); if(!url){ alert('URLを入力してください'); return; }
+    const item={id:'u'+Date.now().toString(36),name:($('uName').value.trim()||url.split('/').pop()||'メディア'),type:$('uType').value,url:url};
+    addLibItem(item); populateMediaPickers();
+    if($('fMediaType').value===item.type) $('fMedia').value=item.url; else if(item.type==='audio') $('fSound').value=item.url;
+    updateModalVis(); $('urlModal').classList.remove('open');
+  });
+  $('fAddFile').addEventListener('click',()=>$('fFileInput').click());
+  $('fFileInput').addEventListener('change',e=>{
+    const f=e.target.files&&e.target.files[0]; e.target.value='';
+    if(!f) return;
+    // ブラウザからHTTPでサーバーへアップロード（Electron File.path 依存を廃止）
+    const btn=$('fAddFile'); const orig=btn.textContent; btn.textContent='⏳ 取り込み中…'; btn.disabled=true;
+    fetch('/api/media?name='+encodeURIComponent(f.name),{method:'POST',body:f})
+      .then(r=>r.json())
+      .then(res=>{
+        if(res&&res.ok&&res.item){ addLibItem(res.item); populateMediaPickers();
+          if($('fMediaType').value===res.item.type) $('fMedia').value=res.item.url; else if(res.item.type==='audio') $('fSound').value=res.item.url;
+          updateModalVis();
+        } else { alert('取り込みに失敗しました：'+((res&&res.error)||'不明なエラー')); }
+      })
+      .catch(err=>{ alert('取り込みに失敗しました：'+((err&&err.message)||'サーバーに接続できません')); })
+      .finally(()=>{ btn.textContent=orig; btn.disabled=false; });
+  });
+  $('fDelMedia').addEventListener('click',()=>{ const u=$('fMedia').value; if(!u){ alert('削除するメディアを選択してください。'); return; } delLibItem(u); populateMediaPickers(); $('fMedia').value=''; updateModalVis(); });
+
+  $('modalCancel').addEventListener('click',closeModal);
+  $('ruleModal').addEventListener('click',e=>{ if(e.target===$('ruleModal')) closeModal(); });
+  $('modalTest').addEventListener('click',()=>testRule(readModal()));
+  $('modalSave').addEventListener('click',()=>{
+    const r=readModal();
+    if(editIdx>=0) settings.rules[editIdx]=r; else settings.rules.push(r);
+    save(); renderRules(); closeModal();
+  });
+}
+
+function init(){
+  loadSettings();
+  const v=$('appVer'); if(v) v.textContent='v'+APP_VERSION;
+  if(OBS){ document.body.classList.remove('edit'); }
+  else { document.body.classList.add('edit'); bindEditor(); }
+  connect();
+}
+document.addEventListener('DOMContentLoaded',init);
+</script>
+</body>
+</html>

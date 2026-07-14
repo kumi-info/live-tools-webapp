@@ -1,0 +1,131 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>お知らせ・更新情報 — LIVE Tools Web</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%2310262a'/><text x='50' y='68' font-size='52' text-anchor='middle'>📢</text></svg>">
+<style>
+  :root{--bg:#0f171c;--card:#16222a;--ac:#1ab5ba;--mut:#8aa0a8;--tx:#e7eef0;--bd:#2a3a42;--warn:#fbdb58}
+  *{box-sizing:border-box}
+  body{font-family:system-ui,"Segoe UI",sans-serif;background:var(--bg);color:var(--tx);margin:0;line-height:1.6}
+  .wrap{max-width:780px;margin:0 auto;padding:0 16px 48px}
+  .top{position:sticky;top:0;z-index:5;background:#0f171c;display:flex;align-items:center;justify-content:space-between;padding:14px 4px;border-bottom:1px solid var(--bd);margin-bottom:8px}
+  .top .ttl{display:flex;align-items:center;gap:9px;font-size:18px;font-weight:800;color:#eafafa}
+  .top .ttl .ic{color:var(--ac)}
+  a.back{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#cdeeee;background:#13343a;border:1px solid var(--ac);border-radius:9px;padding:8px 13px;text-decoration:none;transition:.15s;font-weight:700}
+  a.back:hover{background:var(--ac);color:#06343a}
+  .cur{font-size:12.5px;color:var(--mut);margin:18px 0 10px}
+  .cur b{color:var(--ac)}
+  .legend{display:flex;gap:14px;font-size:11px;color:var(--mut);margin:0 2px 12px;flex-wrap:wrap}
+  .legend span{display:inline-flex;align-items:center;gap:5px}
+  .legend i{width:10px;height:10px;border-radius:3px;display:inline-block}
+  .vergroup{margin-bottom:16px}
+  .verhead{display:flex;align-items:baseline;gap:10px;margin:0 2px 8px}
+  .verhead .vb{font-size:15px;font-weight:800;color:#04161a;background:var(--ac);border-radius:8px;padding:2px 11px}
+  .verhead .vd{font-size:11.5px;color:var(--mut)}
+  ul.list{list-style:none;margin:0;padding:0;border:1px solid #1ab5ba22;border-radius:12px;overflow:hidden;background:var(--card)}
+  li.item{border-top:1px solid #ffffff0d}
+  li.item:first-child{border-top:0}
+  .head{display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer;transition:.12s}
+  .head:hover{background:#1c2c34}
+  .tag{flex:0 0 auto;font-size:11px;font-weight:800;border-radius:6px;padding:3px 9px}
+  .tag.feature{background:#0e3a32;color:#5fe0bd;border:1px solid #1d9e7555}
+  .tag.fix{background:#3a2f12;color:#f3cf6b;border:1px solid #fbdb5844}
+  .ttl2{flex:1;min-width:0;font-size:13.5px;font-weight:700;color:#e7eef0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .new{flex:0 0 auto;font-size:10px;font-weight:800;color:#04161a;background:var(--warn);border-radius:5px;padding:2px 6px;letter-spacing:.04em}
+  .caret{flex:0 0 auto;color:var(--mut);font-size:12px;transition:transform .15s}
+  li.open .caret{transform:rotate(90deg)}
+  .detail{display:none;padding:0 14px 14px 14px;font-size:12.5px;color:#cdd9dd;line-height:1.7}
+  li.open .detail{display:block}
+  .empty{font-size:13px;color:var(--mut);text-align:center;padding:24px}
+  .foot{font-size:11px;color:#5f6f76;text-align:center;margin-top:24px}
+</style></head><body>
+<div class="wrap">
+  <div class="top">
+    <span class="ttl"><span class="ic">📢</span>お知らせ・更新情報</span>
+    <a class="back" href="/">← メニューへ戻る</a>
+  </div>
+  <div class="cur">現在のバージョン：<b id="cur">v-</b>　行をクリックすると詳細が開きます。<b style="color:#fbdb58">更新のあとは start.bat の再起動が必要です。</b></div>
+  <div class="legend"><span><i style="background:#1d9e75"></i>新機能</span><span><i style="background:#bd9a2a"></i>バグ修正</span><span><span class="new" style="position:static">NEW</span> = 未読の新機能</span></div>
+  <div id="groups"><div class="empty">読み込み中…</div></div>
+  <div class="foot">LIVE Tools Web — お知らせ</div>
+</div>
+<script>
+'use strict';
+const APP_VERSION='0.0.0';   // サーバーが配信時に実バージョンへ書き換える
+// お知らせの版（更新を足したら必ず変える）。メニューの未読バッジ判定に使う（admin.html の NEWS_REV と一致させる）。
+var NEWS_REV='0.20.0-r1';
+var SEEN_KEY='ltw_news_seen_v1';   // 既読の新機能ID（NEWバッジ用）
+var ACK_KEY='ltw_news_ack';        // 既読のお知らせ版（メニューの未読表示用）
+// ▼更新情報はここに新しい順で追記。type:'feature'(新機能) / 'fix'(バグ修正)。同じ version は自動でまとまる。
+var NEWS=[
+  {id:'gacha020',   type:'feature', version:'0.20.0', date:'2026-07-13', title:'🎲 ガチャβ を新設（ギフト1つで「妨害か救済か」を抽選して演出）', detail:'メニューに「🎲 ガチャβ」を追加しました（ゲーム連携βとは独立した機能）。特定のギフトが飛ぶと、その場で「ハズレ / 当たり / プレミア(HR)」を抽選し、結果の演出をOBSに出します。①作り方は2種類：「別ガチャ式」（妨害用・救済用を別々に）と「分岐式」（1つのガチャで当たりが妨害/救済に分かれる＝どっちに転ぶかドキドキ）。②確率は2段階：「当たり率」（1/99 などの◯分の1や◯%）→「プレミア率」（当たりの中の1/◯・おすすめは当たりの1/5）で決め、実際の確率は自動計算で表示。分岐式の妨害/救済は既定で半々（50:50・調整可）。③各結果に演出（webm/画像）＋効果音＋テキストを設定（v1は演出のみ・マイクラ連携なし）。④演出はOBSに専用URL（…/gachabeta/overlay）を貼って全画面表示。演出のwebmが未設定でも組み込みの演出で動きます。⑤テスト：段階ごとの「▶ 演出テスト」と「🎲 試し引き」。TikTok未接続でも確認できます。⑥「🏆 当選ログ」で、プレミア(HR)を誰が・いつ・妨害/救済どちらで出したかを記録・一覧（テストは記録されません）。連投・まとめ投げは1個ずつ順番に演出します。'},
+  {id:'beta0192',   type:'feature', version:'0.19.2', date:'2026-07-13', title:'同じ名前のギフトはID違いでもまとめて反応するように', detail:'TikTokには「見た目・名前は同じなのに内部IDが違うギフト」があります。これまではレコードで選んだIDのギフトにしか反応しませんでしたが、今後は「同じ名前のギフト」ならID違いでも同じレコードが発動します（どれか1つを選んでおけばOK・複数選んでも重複しません）。ギフト選択画面でも、同名ギフトはまとめて「使用中」（黄色い枠）で表示されます。'},
+  {id:'beta0191',   type:'fix',     version:'0.19.1', date:'2026-07-13', title:'BGM（音声）が止まらない不具合を修正', detail:'「⏹ 音を止める」を押しても、遅延つきの音声や再生待ちが溜まっていると、止めた直後に次のBGMが鳴り続けてしまう不具合を修正しました。停止ボタンで、①今鳴っている音を止める②再生待ちの音声を取り消す③遅延待ち中（まだ鳴っていない）音声もキャンセルする、の3つをまとめて行うようにしました。長い曲が読み込み中でも確実に止まります。停止ボタンは分かりやすいように赤色（⏹ BGM・音を止める）にしました。'},
+  {id:'beta019',    type:'feature', version:'0.19.0', date:'2026-07-13', title:'ゲーム連携β：ギフト一覧オーバーレイ大幅強化＋マイクラコマンドの繰り返し実行', detail:'①ギフト一覧オーバーレイの画像を大きく表示するようにしました（既定サイズを拡大）。②レコードごとに「📺 ギフト一覧オーバーレイに表示しない」を選べます。③✂ Split（分割）機能：一覧を2〜4ブロックに分けて、それぞれ別のブラウザソースに配置できます（各パートのURLはオーバーレイタブに表示）。④オーバーレイを ?edit=1 付きで開くと（オーバーレイタブの「🖱 並び替え/確認」）、ギフト画像を直接ドラッグ＆ドロップして並び替えできます。⑤ギフトが多くても画面から見切れないよう自動で縮小する「見切れ防止」を追加。⑥🎰スピナーの当選時に、当たったギフトを画面中央に大きくズーム表示するようにしました。⑦マイクラコマンドのアクションに「繰り返し回数（×1〜100）」と繰り返し間隔を追加しました。⑧ギフト選択画面で名前だけでなく「ID・コイン数」でも検索でき、一度でも使用中のギフトは黄色い枠と「使用中」バッジで分かるようにしました。'},
+  {id:'beta018',    type:'feature', version:'0.18.0', date:'2026-07-13', title:'ゲーム連携β：🎰スピナー型ガチャ＆ドラッグ＆ドロップ並び替え', detail:'①レコードに「🎰 スピナー（ガチャ）」を追加しました。「スピナーを回す」に設定したレコードが発動すると、同じグループ番号の「抽選の対象にする」レコードの中から当たりやすさ（重み1〜100）に応じて1つが抽選され、OBSのギフト一覧オーバーレイ上でルーレット演出（候補が流れて減速→当選で停止・回転時間1〜20秒）が再生されたあと、当選レコードのアクション・効果音が実行されます。対象レコードを直接発動させたくない場合はトリガーのギフトを未選択のままにしてください。グループ番号を変えれば複数のガチャを同時運用できます。②レコード一覧の左端に「≡」ハンドルを追加：ドラッグ＆ドロップで好きな位置へ並び替えできます（↑↓ボタンも引き続き使えます）。'},
+  {id:'beta017',    type:'feature', version:'0.17.0', date:'2026-07-13', title:'ゲーム連携β：音声の停止ボタン＆レコード直付けの効果音欄を追加', detail:'①レコードの編集画面に「🔊 効果音」欄を追加しました。トリガー＋アクションのセット（レコード）1つにつき効果音を1つ、アクションとは別に直接設定できます（ファイル選択・試聴・音量%・✕で解除）。発動時はアクションより先に鳴ります。効果音だけのレコード（コマンドなし）も作れます。②「▶試聴」は再生中に「⏹停止」へ切り替わるトグルになりました。③画面上部の接続状態の横に「⏹ 音を止める」ボタンを追加：オーバーレイで鳴っている音声（長い曲など）をすべて即停止できます。'},
+  {id:'beta016',    type:'feature', version:'0.16.0', date:'2026-07-13', title:'旧「ゲーム連携」を廃止し、ゲーム連携βに一本化', detail:'シンプル版の「🎮 ゲーム連携（/game）」を廃止しました。今後はプロファイル切替・音声再生・ゲームルール設定などが揃った「🎮 ゲーム連携β（/gamebeta）」をお使いください。旧URL（/game）を開いた場合は自動でβへ転送されます。旧版で設定していた内容（data/gameactions.json）はβとは別の設定だったため引き継がれません。βのレコードとして作り直してください（ほとんどの方はすでにβをお使いのはずです）。'},
+  {id:'beta015',    type:'feature', version:'0.15.0', date:'2026-07-12', title:'ゲーム連携β：レコード一覧をスリム化（詳細はモーダル編集）・おすすめゲームルール標準搭載ほか', detail:'①レコード一覧を「ギフト画像＋名前＋要約」のコンパクトな行表示にしました。行クリックか「✎編集」で詳細設定（トリガー・アクション）がモーダルで開きます。「＋レコードを追加」はそのまま編集画面が開くようになりました。②おすすめゲームルール（昼夜固定 advance_time／天候固定 advance_weather／死亡時アイテムドロップなし keep_inventory／コマンド表示OFF send_command_feedback）を、26.1以降の新形式と1.21系の旧形式（doDaylightCycle等）の両方の名前で「⭐おすすめ一括」ボタンから登録できます。新規プロファイルには最初から入っています（どちらのバージョンのサーバーでも対応する側だけが効きます）。③保存時に画面上部へ大きな「✓ 保存しました」を表示するようにしました。④ヘッダーに「❓使い方」（かんたんガイド）と分かりやすい「🏠メニューへ戻る」ボタンを追加。⑤メニュー（管理画面）のゲーム連携・ゲーム連携β・Pavlok連携ボタンを上部へ移動しました。'},
+  {id:'beta014',    type:'feature', version:'0.14.0', date:'2026-07-12', title:'ゲーム連携β：🔊音声再生アクション（音量調整つき）＆ギフト連投は自動で個数ぶん発動', detail:'①アクションに「🔊 音声再生」を追加しました。mp3/wav/ogg等のファイルを取り込み、トリガー発動時に再生できます（音量0〜100%を個別調整・▶試聴ボタンつき・遅延やランダム実行とも組み合わせ可）。音はOBSに追加した「ギフト一覧オーバーレイ」（📺タブのURL）経由で鳴るため、そのまま配信に乗ります。オーバーレイを追加していない場合は実行ログに案内が出ます。②ギフトの連投・まとめ贈りは、チェック不要で常に個数ぶん発動する既定動作になりました（「個数ぶん実行」チェックは廃止・安全のため1回のイベントで最大20発動）。あわせて「コイン額で指定」の判定を合計額から【ギフト1個あたりの額】に変更：バラ（1コイン）×5連投なら「1〜1コイン」ルールが5回発動する、という自然な動きになります。'},
+  {id:'beta013',    type:'feature', version:'0.13.0', date:'2026-07-12', title:'ゲーム連携β：ゲームルールの起動前設定＆自動適用・26.1以降の新ルール名対応・RCON無効化', detail:'①「🕒 起動時に自動適用」：ゲームルールをサーバー起動前に登録しておくと、マイクラサーバーが起動してRCON接続が確立するたびに自動でコマンド送信されます。プリセット（🌞時間・天気を固定／🎒アイテムを落とさない／🧟湧き・ドロップ停止／💬コマンド表示OFF）で一括追加でき、ルール名の形式（26.1以降の新形式 advance_time等／従来の doDaylightCycle等）を選べます。「⚡今すぐ適用」で起動中のサーバーへ即送信も可能。②「🔄現在値の読み込み」もマイクラ26.1以降の新ルール名（advance_time・keep_inventory・send_command_feedback・advance_weather など）に対応しました。③「⛔ 無効に戻す」ボタンで server.properties の enable-rcon を false に書き戻せます（バックアップ作成・要マイクラ再起動）。④ギフト一覧オーバーレイのコイン額バッジを廃止しました。⑤画面のスクリプトエラーや古いサーバー（再起動忘れ）を検出して大きく警告を表示するようにしました＝「ボタンを押しても反応しないのにエラーが出ない」状態を防ぎます。'},
+  {id:'beta012',    type:'feature', version:'0.12.0', date:'2026-07-12', title:'ゲーム連携β：📂参照ダイアログ・キー押して設定・ランダム実行・アクション遅延ほか', detail:'①サーバーフォルダーは「📂 参照…」でWindowsのファイル選択ダイアログから server.properties を選べるようになりました（選ぶと自動取得まで実行）。②キー送信の設定は、入力欄をクリックして実際にキーを押すだけで記録される方式に変更（物理キーで判定するため英字配列・日本語配列どちらでもOK。✕でクリア）。③レコードのアクションが2つ以上のとき「順番にすべて実行／ランダムに1つ実行」を選べます。④各アクションに ⏱遅延（秒）を設定でき、順番実行では前のアクションからの間隔になります（例: ゾンビ召喚→2秒後にTNT）。⑤レコードの並びを「①いつ発動（トリガー）→②何をする（アクション）」の順に変更。⑥一覧にないギフトのID登録はギフト選択画面の下に移動し、登録・削除は即保存されます（dataフォルダーに保存されるため、アプリを更新しても削除するまでずっと保持されます）。'},
+  {id:'giftoverlay',type:'feature', version:'0.11.0', date:'2026-07-12', title:'ゲーム連携β：ギフト一覧オーバーレイ（OBS用）を追加', detail:'設定したギフトトリガーを「ギフト画像＋機能名」のグリッドで表示するオーバーレイを追加しました（StreamToEarnのギフト一覧と同じ用途）。ゲーム連携βの「📺 オーバーレイ」タブでURLをコピーしてOBSのブラウザソースに貼るだけ。アクティブプロファイルのONのギフトトリガーが並び順のまま表示され、レコードの追加・並び替え・プロファイル切替は約2秒で自動反映されます。1行あたりの個数・アイテムの高さ・余白・角丸・輪郭色・背景の濃さ・機能名の表示/色/サイズ・コイン額表示を調整でき、設定タブ内でプレビューも確認できます。ギフト画像はTikTok接続後に自動で取得され、コイン額指定のレコードは🪙で表示されます。'},
+  {id:'gamebeta2',  type:'feature', version:'0.10.0', date:'2026-07-12', title:'ゲーム連携β 大幅リニューアル：プロファイル切替・レコード方式・ギフトピッカー・ゲームルール設定', detail:'①画面をタブ（⚙サーバー設定／🎁トリガー設定／📜実行ログ）に分けて見やすくしました。②「レコード」方式に変更：①アクション（何をするか）→②トリガー（いつ発動）の順で1セットを作り、📋複製・↑↓並び替え・ON/OFFができます（1プロファイル最大100件）。③「ゲームプロファイル」：ゲーム（サーバー）ごとに接続設定とレコード一式を保存し、ドロップダウンで切り替えるだけで発動内容がまるごと替わります（最大20件・複製可）。④ギフト選択は画像つきピッカーに：名前検索・コイン安い順/高い順/名前順の並び替えに対応。⑤RCONパスワードは暗号化して保存（鍵は別ファイル）。⑥フォロートリガーは初回フォローのみ発動（同じ人のリフォローは記録して除外。フォロー演出オーバーレイにも適用）。⑦ゲームルール簡単設定：keepInventory（アイテムを落とさない）や時間経過・天候などをスイッチで変更。サーバーに現在値を問い合わせて対応ルールだけ表示するので、マイクラのバージョンが変わっても自動対応。一覧にないルール名の手動追加も可能です。'},
+  {id:'giftmatch',  type:'feature', version:'0.9.1', date:'2026-07-12', title:'ゲーム連携：ギフトの発動条件を「特定のギフト／コイン額で指定」の2方式に変更', detail:'ゲーム連携（現行・β両方）のギフトルールから「どのギフトでも」をなくし、発動条件を「特定のギフト（一覧から選択）」か「コイン額で指定（1回のギフトのダイヤ×個数が 下限〜上限 の範囲）」のどちらかを選ぶ形にしました。コイン額は上限0で「◯コイン以上」、下限と上限を同じ値にすると「ちょうど◯コイン」になります。既存のルールは自動で引き継がれます（ギフト指定済み→特定のギフト、最低コインのみ→コイン額指定）。'},
+  {id:'gamebeta',   type:'feature', version:'0.9.0', date:'2026-07-12', title:'ゲーム連携β：プリセットでマイクラ＋Pavlok＋HTTP＋キー送信をまとめて発動', detail:'メニュー下部に「🎮 ゲーム連携β」を追加しました（現行の🎮ゲーム連携はそのまま使えます）。βでは「プリセット」＝アクションの束（マイクラコマンド／HTTP送信／Pavlokビリビリ／キー送信）を作り、ギフト・いいね・フォロー・コメントのルールに割り当てます。1つのギフトで「ゾンビ召喚＋ビリビリ＋演出ツールへHTTP送信」のような複数アクションの同時発動が可能です。さらに ①RCONパスワードの自動取得（マイクラサーバーのフォルダーを指定→server.propertiesから読み取り。RCONが無効ならバックアップを作って有効化の書き込みもワンクリック・要マイクラ再起動）②マイクラのユーザー名設定と {mc} 置き換え・「👑 自分にOP付与」ボタン ③一覧にないギフトもID手動登録でルールに使用可能、に対応しています。'},
+  {id:'gameactions',type:'feature', version:'0.8.0', date:'2026-07-12', title:'ゲーム連携：ギフト等でマイクラのコマンドを自動実行', detail:'TikTokのギフト・いいね・フォロー・コメントをトリガーに、マイクラサーバーへ自動でコマンドを送れるようになりました（StreamToEarnのコマンド連携の自作版）。マイクラ標準のRCON機能を使うためプラグインは不要です。server.properties で enable-rcon=true と rcon.password を設定してサーバーを再起動し、メニュー下部の「🎮 ゲーム連携」で接続設定とルールを作ってください。ルールは「特定ギフト（一覧から選択）や最低コイン額」「いいねN回ごと」「フォロー」「コメントのキーワード」で発動でき、コマンドには {user}（ユーザーID）{nick}（ニックネーム）{gift}（ギフト名）{count}（個数）{coins}（コイン額）{comment}（コメント本文）を埋め込めます。連打ギフトは個数ぶん実行も可能。クールダウン（連続発動の抑制）、送信間隔0.3秒のキュー処理、実行ログつき。設定ページはこのPCの中からのみアクセスできます。'},
+  {id:'analytics',  type:'feature', version:'0.7.0', date:'2026-07-11', title:'配信分析（配信データ取得）を追加', detail:'exe版と同じ配信分析機能が使えるようになりました。メニュー右上の「📊 配信分析」から開けます。配信ごとに日時・タイトル・総いいね・総コイン・フォロー数を記録し、行をクリックすると視聴者全員のいいね・コイン・視聴時間（推定）を確認できます。CSV出力（Excelで開けます）、タイトルの修正、配信ごとの削除も可能。記録を止めたいときは「配信データ取得：OFF」にしてください（OFFの間は集計・保存しない＝軽量）。データは直近50配信ぶんを data フォルダーに保存し、アプリが途中で落ちても20分以内の再接続なら同じ配信の続きとして引き継ぎます。'},
+  {id:'pavlokui',   type:'fix',     version:'0.6.4', date:'2026-07-11', title:'Pavlokページの見やすさを改善', detail:'Pavlok連携ページの説明文を簡潔にし、詳しい説明は右上の「❓ 使い方」ボタンで開閉する形にしました。「← メニューへ戻る」ボタンも右上の目立つ位置に移動しました。あわせてメニュー画面のお知らせ・使い方ボタンの下に余白を追加しました。'},
+  {id:'pavlokbatch',type:'feature', version:'0.6.3', date:'2026-07-11', title:'Pavlok：まとめ投げ対応（大量リクエストも順番に全部発動）', detail:'ギフトのまとめ投げなどで発動URLに一気にリクエストが来ても、取りこぼさず順番に全部発動するようになりました（これまでは10件を超えた分が捨てられていました）。順番待ちできる件数は既定50件・最大200件で、Pavlok連携ページの設定「まとめ投げの上限」で変更できます。送信自体は安全のため1.5秒間隔のままです（50件なら約75秒かけて発動）。'},
+  {id:'pavlokpreset',type:'feature',version:'0.6.2', date:'2026-07-11', title:'Pavlokパターン登録（URLだけコピー）を追加', detail:'Pavlok連携ページ（/pavlok）に「パターン」欄を追加しました。名前・種類（ザップ/ビープ/バイブ）・強さ・回数の組み合わせを最大12件登録でき、「📋 URL」ボタンでそのパターンの発動URLだけをコピーして STE や TikFinity に貼り付けられます。初期状態で「弱め/ふつう/強め/最強/連発」の5パターン入り。編集したら「💾 パターンを保存」を押してください。'},
+  {id:'pavlokpost', type:'fix',     version:'0.6.1', date:'2026-07-11', title:'Pavlok発動URLがSTEから404になるのを修正', detail:'STE（StreamToEarn）はURLをPOSTで呼び出すため、GETのみ受け付けていた発動URL（/pavlok/強さ_回数）が404エラーになっていました。GETとPOSTの両方を受け付けるように修正しました。TikFinity・ブラウザ・STEのいずれからも同じURLで発動できます。'},
+  {id:'pavlok',     type:'feature', version:'0.6.0', date:'2026-07-11', title:'Pavlok（ビリビリ）連携を追加', detail:'LIVE Tools が起動していれば、「http://127.0.0.1:21216/pavlok/強さ_回数」を叩くだけで Pavlok デバイスを作動させられるようになりました（STE・TikFinity のURL欄に貼るだけ）。ザップのほか /pavlok/beep/…（ビープ）と /pavlok/vibe/…（バイブ）も使えます。メニュー下部の「⚡ Pavlok連携」からテスト送信・トークン設定ができます。安全のため強さ100・回数5・送信間隔1.5秒の上限つき。このPCの中からのアクセスのみ受け付けます。'},
+  {id:'staleserver',type:'fix',     version:'0.5.2', date:'2026-07-11', title:'「再起動したのに直らない」を解消（古いサーバーの自動入れ替え＋OBSの自動更新）', detail:'更新後に start.bat を再実行しても、古いサーバーが（ウィンドウなしの）バックグラウンドで残っているとポートが使えず、新機能が動かない・OBSにデザインが反映されない状態になっていました。対策として、①起動時にポートを古いサーバーが使っていたら自動で終了して引き継ぐ（start.bat を実行するだけでOK）、②サーバー更新後はOBS内に残っている古いページが自動でリロードして最新化、③管理画面にも古いサーバー警告を表示、するようにしました。まだ表示がおかしい場合はOBSのブラウザソースを右クリック→「現在のページのキャッシュを更新」を試してください。'},
+  {id:'alertdrag',  type:'feature', version:'0.5.1', date:'2026-07-11', title:'演出オーバーレイのURLもOBSへドラッグ＆ドロップ可能に', detail:'演出オーバーレイの編集ページ「OBS用URL」に、他のメーターと同じ「ここを掴んで OBS のURL欄へドロップ」を追加しました。チップをOBSのブラウザソースのURL欄へドラッグするか、クリックでコピーできます。'},
+  {id:'helpnews',   type:'feature', version:'0.5.0', date:'2026-07-11', title:'使い方ヘルプ・お知らせ画面を追加', detail:'メニュー右上に「❓ 使い方」（図解つきの使い方ページ）と「📢 お知らせ」（この更新情報ページ）を追加しました。新しい更新があるとお知らせボタンに赤い点が付きます。'},
+  {id:'restartwarn',type:'feature', version:'0.5.0', date:'2026-07-11', title:'再起動が必要なときに⚠を表示', detail:'アプリの更新後に start.bat を再起動していないと、新機能（マイクラ連携・WIN演出連動など）が動きません。この状態を自動で検出し、WINカウンター・演出オーバーレイの編集ページに「⚠ アプリの再起動が必要です」の帯を表示するようにしました。表示されたら start.bat のウィンドウを閉じて、もう一度実行してください。'},
+  {id:'mcsync',     type:'feature', version:'0.4.0', date:'2026-07-11', title:'マイクラ連携：CommonWINプラグインのWINを自動反映', detail:'WINカウンター⚙に「マイクラ連携（CommonWIN）」を追加しました。ONにするとマイクラのWINプラグインのオーバーレイ（既定 http://localhost:8765）を1秒ごとに監視し、ゲーム内のWIN増減をそのままカウンターへ反映します。＋WIN/−WIN/目標達成の演出も連動します。別PCの場合はそのPCのIPアドレスを指定できます。接続状態は⚙内に表示されます。'},
+  {id:'wintrigger', type:'feature', version:'0.4.0', date:'2026-07-11', title:'演出オーバーレイにWINトリガー3種＋位置のドラッグ調整', detail:'演出オーバーレイのトリガーに「WINが増えたとき」「WINが減ったとき」「WINの目標を達成したとき」を追加しました。動画・画像・音・テキスト（{count}=増減数）を再生できます。さらに全ルール共通で「🖱 位置調整」ボタンを追加。演出のプレビューをドラッグして表示位置を自由に決めて保存できます（ギフト・フォロー・いいねの演出でも使えます）。'},
+  {id:'gaugeoff',   type:'feature', version:'0.4.0', date:'2026-07-11', title:'WINカウンター：ゲージなし表示と数字だけの拡大', detail:'「表示」に「ゲージを表示」を追加（OFFでゲージバー/角丸バーを数字だけの表示に）。「文字」に「WIN数字の大きさ」を追加し、現在のWIN数の数字だけを50〜300%で拡大できます。'},
+  {id:'panelunify', type:'feature', version:'0.3.0', date:'2026-07-11', title:'WINカウンターの編集画面をいいねメーターと同じレイアウトに', detail:'WINカウンターの編集ページを、いいねメーター等と同じ見た目（市松背景・右側パネル・折りたたみセクション・OBSに貼り付け）に統一しました。目標（3 / 10 の形）は常に表示されるようになりました。'},
+  {id:'windesigns', type:'feature', version:'0.3.0', date:'2026-07-11', title:'WINカウンターにデザイン5種とアイコン変更を追加', detail:'デザインを「シンプル文字（従来）／ゴールド数字／ダークバー／ゲージバー／角丸バー」の5種から選べるようになりました。ゴールド数字・ダークバー・ゲージバーはマイクラのWINプラグイン（CommonWIN）と同じ見た目です。ゲージバーはマイナス=赤／達成=金に自動で変化します。アイコンはトロフィー／好きな絵文字／画像に変更でき、見た目の設定はデザインごとに保存されます。'},
+  {id:'wincounter', type:'feature', version:'0.2.0', date:'2026-07-11', title:'WINカウンターを追加', detail:'累計WIN数を表示するオーバーレイを追加しました。数はサーバーに保存され、リロードしても消えません。コインメーターの目標達成で自動加算できます（コインメーター⚙「達成でWIN追加」）。手動の＋1/−1/リセット/数値指定は編集ページから。'},
+  {id:'webapp',     type:'feature', version:'0.1.0', date:'2026-07-11', title:'LIVE Tools Webアプリ版を公開', detail:'exe不要・ブラウザだけで使えるLIVE Toolsです。オーバーレイセットを作ると各メーターの短い固定URLが発行され、OBSに貼った後は設定を変えてもURLそのままで自動反映されます。設定はサーバー側（data/）に保存されます。'}
+];
+(function(){
+  try{
+    var cur=document.getElementById('cur'); if(cur) cur.textContent='v'+APP_VERSION;
+    var box=document.getElementById('groups'); if(!box) return;
+    if(!Array.isArray(NEWS)||!NEWS.length){ box.innerHTML='<div class="empty">お知らせはまだありません。</div>'; return; }
+    var seen={}; try{ (JSON.parse(localStorage.getItem(SEEN_KEY)||'[]')||[]).forEach(function(id){seen[id]=1;}); }catch(_){}
+    var esc=function(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); };
+    // 同じバージョンでまとめる（出現順を維持）
+    var groups=[], gi={};
+    NEWS.forEach(function(it){ var v=it.version; if(!(v in gi)){ gi[v]=groups.length; groups.push({version:v,date:it.date,items:[]}); } groups[gi[v]].items.push(it); });
+    function rowHtml(it){
+      var isNew=(it.type==='feature' && !seen[it.id]);
+      var tagTxt=(it.type==='feature')?'新機能':'バグ修正';
+      return '<li class="item" data-id="'+esc(it.id)+'">'
+        +'<div class="head">'
+          +'<span class="tag '+(it.type==='feature'?'feature':'fix')+'">'+tagTxt+'</span>'
+          +'<span class="ttl2">'+esc(it.title)+'</span>'
+          +(isNew?'<span class="new">NEW</span>':'')
+          +'<span class="caret">▶</span>'
+        +'</div>'
+        +'<div class="detail">'+esc(it.detail||'')+'</div>'
+        +'</li>';
+    }
+    box.innerHTML=groups.map(function(g){
+      return '<div class="vergroup"><div class="verhead"><span class="vb">v'+esc(g.version)+'</span><span class="vd">'+esc(g.date||'')+'</span></div>'
+        +'<ul class="list">'+g.items.map(rowHtml).join('')+'</ul></div>';
+    }).join('');
+    box.addEventListener('click',function(e){ var li=e.target.closest('.item'); if(!li) return; li.classList.toggle('open'); });
+    // 一度表示したらNEWは消える：新機能を既読保存＋お知らせ版を既読化（メニューの未読点が消える）
+    NEWS.forEach(function(it){ if(it.type==='feature') seen[it.id]=1; });
+    try{ localStorage.setItem(SEEN_KEY, JSON.stringify(Object.keys(seen))); }catch(_){}
+    try{ localStorage.setItem(ACK_KEY, NEWS_REV); }catch(_){}
+  }catch(e){
+    try{ var b=document.getElementById('groups'); if(b) b.innerHTML='<div class="empty">お知らせの表示中にエラーが発生しました。</div>'; }catch(_){}
+  }
+})();
+</script>
+</body></html>

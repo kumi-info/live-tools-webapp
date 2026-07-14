@@ -1,0 +1,658 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WINカウンター</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%2310262a'/><text x='50' y='68' font-size='52' text-anchor='middle'>🏆</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=M+PLUS+Rounded+1c:wght@500;700;800&display=swap" rel="stylesheet">
+<script src="/socket.io/socket.io.js"></script>
+<style>
+/* ============================================================
+   WINカウンター（Webアプリ版）
+   - 編集パネルの見た目・構造は overlay.html（いいねメーター等）と同一
+   - /edit/:id/win = 編集モード（パネル表示・市松背景）、/overlay/... = 表示専用（OBS用）
+   ============================================================ */
+:root{ --meter:#1ab5ba; --accent:#fbdb58; }
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;overflow:hidden;background:transparent}
+body{font-family:'M PLUS Rounded 1c',system-ui,"Segoe UI",sans-serif}
+
+/* 編集モードの市松背景（overlay.html と同一） */
+body.edit{
+  background-color:#1f2933;
+  background-image:
+    linear-gradient(45deg,#2a3742 25%,transparent 25%),
+    linear-gradient(-45deg,#2a3742 25%,transparent 25%),
+    linear-gradient(45deg,transparent 75%,#2a3742 75%),
+    linear-gradient(-45deg,transparent 75%,#2a3742 75%);
+  background-size:32px 32px;background-position:0 0,0 16px,16px -16px,-16px 0;
+}
+
+/* ===== 表示本体（OBSに映る部分） =====
+   デザインは #box のクラス（d-text / d-gold / d-bar / d-frame / d-pill）で切替。
+   サイズは --size 基準の calc() 一括スケール（CommonWINプラグインの方式）。 */
+#stage{position:absolute;inset:0;display:flex;padding:3.5vh 3vw;pointer-events:none}
+#box{position:relative;display:flex;--size:96px;--u:calc(var(--size)/28)}
+#wIcon,#wLabel,#wCount,#wGoal{line-height:1.1;white-space:nowrap}
+#wIcon{display:none;align-items:center;justify-content:center}
+#wIcon img{width:1em;height:1em;object-fit:contain;display:block}
+#wIcon svg{width:1em;height:1em;display:block}
+#wCount{font-variant-numeric:tabular-nums}
+#wGoal{font-variant-numeric:tabular-nums}
+#wGauge{display:none;position:relative;overflow:hidden}
+#wFill{position:absolute;left:0;top:0;bottom:0;width:0;border-radius:inherit;transition:width .4s ease}
+#wPct{position:absolute;left:0;right:0;text-align:center;font-weight:700;color:#fff}
+#wCount.bump{animation:bump .5s cubic-bezier(.2,1.7,.4,1)}
+@keyframes bump{0%{transform:scale(1.4)}100%{transform:scale(1)}}
+/* ソフト縁取り（シンプル文字用） */
+.outline{text-shadow:0 2px 0 rgba(0,0,0,.55),-2px 0 2px rgba(0,0,0,.45),2px 0 2px rgba(0,0,0,.45),0 -2px 2px rgba(0,0,0,.45),0 3px 10px rgba(0,0,0,.5)}
+/* ハード縁取り（ゴールド数字用。プラグインと同じ8方向シャドウ） */
+.outline2{text-shadow:
+  calc(var(--u)*-1) 0 var(--oc,#1f1408), var(--u) 0 var(--oc,#1f1408),
+  0 calc(var(--u)*-1) var(--oc,#1f1408), 0 var(--u) var(--oc,#1f1408),
+  calc(var(--u)*-1) calc(var(--u)*-1) var(--oc,#1f1408), var(--u) calc(var(--u)*-1) var(--oc,#1f1408),
+  calc(var(--u)*-1) var(--u) var(--oc,#1f1408), var(--u) var(--u) var(--oc,#1f1408),
+  0 calc(var(--u)*2.5) calc(var(--u)*2) rgba(0,0,0,.55)}
+
+/* ---- シンプル文字（従来デザイン） ---- */
+#box.d-text{align-items:baseline;gap:.32em;border-radius:.22em;padding:.1em .3em}
+#box.d-text.bg{padding:.14em .45em}
+.d-text #wIcon{order:0;font-size:calc(var(--size)*.8);align-self:center}
+.d-text #wLabel{order:1;font-weight:900;letter-spacing:.04em;font-size:calc(var(--size)*.44)}
+.d-text #wCount{order:2;font-weight:900;font-size:calc(var(--size)*var(--cs,1))}
+.d-text #wGoal{order:3;font-weight:800;opacity:.8;font-size:calc(var(--size)*.5)}
+
+/* ---- ゴールド数字（CommonWINプラグイン標準） ---- */
+#box.d-gold{align-items:baseline;gap:calc(var(--size)*.08);font-family:"Arial Black","Segoe UI","Yu Gothic UI",sans-serif;border-radius:.22em;padding:.1em .3em}
+.d-gold #wIcon{order:0;font-size:calc(var(--size)*.8);align-self:center}
+.d-gold #wCount{order:1;font-weight:900;font-size:calc(var(--size)*var(--cs,1))}
+.d-gold #wGoal{order:2;font-weight:900;font-size:calc(var(--size)*.45)}
+.d-gold #wLabel{order:3;font-weight:900;font-size:calc(var(--size)*.45);letter-spacing:.05em}
+
+/* ---- ダークバー（プラグイン theme=bar） ---- */
+#box.d-bar{align-items:center;gap:calc(var(--size)*.24);border-radius:calc(var(--size)*.2);
+  padding:calc(var(--size)*.16) calc(var(--size)*.32);
+  font-family:"Segoe UI","Yu Gothic UI","Hiragino Sans",sans-serif;font-weight:700}
+.d-bar #wIcon{order:0;font-size:calc(var(--size)*.85)}
+.d-bar #wLabel{order:1;font-size:calc(var(--size)*.8)}
+.d-bar #wCount{order:2;font-size:calc(var(--size)*.8*var(--cs,1));font-weight:800;background:var(--chip,#0f0f11);border-radius:.22em;padding:.06em .38em}
+.d-bar #wGoal{order:3;font-size:calc(var(--size)*.8)}
+
+/* ---- ゲージバー（プラグイン theme=frame。状態色：通常ティール/マイナス赤/達成金） ---- */
+#box.d-frame{align-items:center;gap:calc(var(--size)*.21);
+  border:calc(var(--size)*.052) solid #f2f2f2;border-radius:calc(var(--size)*.29);
+  padding:calc(var(--size)*.17) calc(var(--size)*.29);
+  font-family:"Segoe UI","Yu Gothic UI","Hiragino Sans",sans-serif;font-weight:700}
+.d-frame #wIcon{order:0;font-size:calc(var(--size)*.55);color:var(--faccent,#3be0cd)}
+.d-frame #wLabel{order:1;font-size:calc(var(--size)*.4);letter-spacing:.02em}
+.d-frame #wGauge{order:2;width:calc(var(--size)*2.9);height:calc(var(--size)*.58);background:var(--track,#1e4047);border-radius:calc(var(--size)*.17)}
+.d-frame #wPct{line-height:calc(var(--size)*.58);font-size:calc(var(--size)*.29)}
+.d-frame #wCount{order:3;font-size:calc(var(--size)*.5*var(--cs,1));background:var(--chip,#06171b);border-radius:calc(var(--size)*.15);padding:calc(var(--size)*.02) calc(var(--size)*.21)}
+.d-frame #wGoal{order:4;font-size:calc(var(--size)*.4)}
+#box.d-frame.neg #wIcon,#box.d-frame.neg #wCount{color:#ff5c8a!important}
+#box.d-frame.achieved #wIcon,#box.d-frame.achieved #wCount{color:#ffd75e!important}
+#box.d-frame.achieved #wFill{background:#c2920f!important}
+
+/* ---- 角丸バー（いいねメーター風の進捗ピル） ---- */
+#box.d-pill{align-items:center;gap:calc(var(--size)*.26);border-radius:999px;
+  border:calc(var(--size)*.06) solid #ffffff;
+  padding:calc(var(--size)*.16) calc(var(--size)*.3);
+  font-family:'Baloo 2','M PLUS Rounded 1c',sans-serif;
+  box-shadow:0 10px 30px rgba(0,0,0,.35), inset 0 2px 6px rgba(0,0,0,.35)}
+.d-pill #wIcon{order:0;font-size:calc(var(--size)*.62);filter:drop-shadow(0 3px 6px rgba(0,0,0,.45))}
+.d-pill #wLabel{order:1;font-weight:800;font-size:calc(var(--size)*.42)}
+.d-pill #wGauge{order:2;width:calc(var(--size)*4.4);height:calc(var(--size)*.6);background:var(--track,#0a3237);border-radius:999px;box-shadow:inset 0 2px 7px rgba(0,0,0,.6)}
+.d-pill #wFill{box-shadow:0 0 14px rgba(26,181,186,.45)}
+.d-pill #wPct{line-height:calc(var(--size)*.6);font-size:calc(var(--size)*.28);font-weight:800;text-shadow:0 2px 3px rgba(0,0,0,.55)}
+.d-pill #wCount{order:3;font-weight:800;font-size:calc(var(--size)*.5*var(--cs,1));text-shadow:0 2px 4px rgba(0,0,0,.5)}
+.d-pill #wGoal{order:4;font-weight:800;opacity:.85;font-size:calc(var(--size)*.4);text-shadow:0 2px 4px rgba(0,0,0,.5)}
+
+/* ===== 設定パネル（overlay.html と同一スタイル） ===== */
+#gear{position:fixed;top:5px;right:14px;z-index:30;width:46px;height:46px;border-radius:12px;border:none;cursor:pointer;
+  background:rgba(16,38,42,.9);color:var(--accent);display:flex;align-items:center;justify-content:center;box-shadow:0 4px 14px rgba(0,0,0,.4);transition:transform .2s}
+#gear:hover{transform:rotate(45deg)}
+#gear svg{width:26px;height:26px}
+#panel{position:fixed;top:0;right:0;height:100%;width:420px;max-width:94vw;z-index:25;
+  background:linear-gradient(180deg,#0e2327,#0a1a1d);color:#e6f6f6;font-family:'M PLUS Rounded 1c',sans-serif;
+  box-shadow:-12px 0 40px rgba(0,0,0,.5);transform:translateX(100%);transition:transform .35s cubic-bezier(.22,1,.36,1);overflow-y:auto;padding:0 0 60px}
+#panel.open{transform:translateX(0)}
+#panel::-webkit-scrollbar{width:9px}
+#panel::-webkit-scrollbar-thumb{background:#1ab5ba66;border-radius:6px}
+.phead{position:sticky;top:0;z-index:2;background:linear-gradient(180deg,#0e2327,#0e2327ee);padding:18px 20px 14px;border-bottom:1px solid #1ab5ba33;display:flex;align-items:center;justify-content:space-between}
+.phead h1{font-size:18px;font-weight:800;color:#fff;letter-spacing:.5px}
+.phead h1 .ver{font-size:11px;font-weight:700;color:#5fd0d3;opacity:.85;letter-spacing:0;margin-left:6px;vertical-align:middle}
+.phead h1 b{color:var(--accent)}
+.phead .close{background:none;border:none;color:#9fdadb;font-size:24px;cursor:pointer;line-height:1}
+.phead-r{display:flex;align-items:center;gap:10px;margin-right:64px}
+.sect{padding:16px 20px;border-bottom:1px solid #ffffff10;position:relative}
+.sect h2{font-size:12px;font-weight:800;letter-spacing:1.5px;color:#5fd0d3;text-transform:uppercase;margin-bottom:12px}
+.row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:11px}
+.row:last-child{margin-bottom:0}
+.row label:not(.sw){font-size:13.5px;font-weight:500;color:#cfeeee;flex:1}
+input[type=text],input[type=number],select{background:#06181b;border:1px solid #1ab5ba44;border-radius:8px;color:#eafafa;padding:8px 10px;font-size:14px;font-family:inherit;width:150px}
+input[type=text]:focus,input[type=number]:focus,select:focus{outline:none;border-color:var(--meter)}
+input[type=number]{width:120px}
+select{cursor:pointer}
+input[type=color]{width:42px;height:30px;border:1px solid #1ab5ba44;border-radius:6px;background:#06181b;cursor:pointer;padding:2px}
+input[type=range]{width:150px;accent-color:#1ab5ba;cursor:pointer}
+input[type=file]{width:160px;font-size:11px;color:#bfe9e9}
+input[type=file]::file-selector-button{background:#13343a;border:1px solid #1ab5ba44;color:#cdeeee;border-radius:6px;padding:5px 8px;font-family:inherit;cursor:pointer;margin-right:6px}
+.designs{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.tabpane{border:1.5px solid #1ab5ba88;background:#d6f1f2;border-radius:12px;padding:12px}
+.tabpane .hint{margin-top:10px;color:#2f6266}
+.dbtn{background:#06181b;border:1px solid #1ab5ba33;border-radius:9px;color:#bfe9e9;padding:10px 9px;font-size:13px;font-family:inherit;cursor:pointer;font-weight:700;transition:.15s}
+.dbtn:hover{border-color:#fbdb58;background:#0e2a30;color:#fbdb58;transform:translateY(-1px);box-shadow:0 4px 12px #fbdb5866}
+.dbtn.on{background:#1ab5ba;color:#04161a;border-color:#1ab5ba}
+.dbtn.on:hover{background:#1ab5ba;color:#04161a;border-color:#fbdb58;box-shadow:0 4px 14px #fbdb5899}
+.sw{position:relative;display:inline-block;width:46px;height:28px;flex:0 0 auto;margin-left:auto;cursor:pointer}
+.sw input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer;z-index:2}
+.sw .track{position:absolute;inset:0;background:#3a4b50;border-radius:999px;transition:background .2s}
+.sw .knob{position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.45);transition:left .2s;pointer-events:none}
+.sw input:checked ~ .track{background:#1ab5ba}
+.sw input:checked ~ .knob{left:21px}
+.testbtns{display:flex;flex-wrap:wrap;gap:7px}
+.tb{background:#13343a;border:1px solid #1ab5ba44;border-radius:8px;color:#d6f3f3;padding:8px 11px;font-size:13px;font-family:inherit;font-weight:700;cursor:pointer;flex:1;min-width:60px}
+.tb:hover{background:#1ab5ba33}
+.tb.reset{border-color:#ff6b6b55;color:#ff9d9d}
+.btn{width:100%;margin-top:9px;background:var(--meter);color:#04161a;border:none;border-radius:9px;padding:11px;font-size:14px;font-weight:800;font-family:inherit;cursor:pointer;transition:.15s}
+.btn:hover{filter:brightness(1.1)}
+.btn.sec{background:#13343a;color:#cdeeee;border:1px solid #1ab5ba44;margin-top:7px}
+.hint{font-size:11.5px;color:#7fb3b5;line-height:1.6;margin-top:9px}
+.status{font-size:12.5px;color:#8fd0d2;margin-top:8px;font-weight:700}
+.status .dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#6b7a7c;margin-right:6px;vertical-align:middle}
+.status.ok .dot{background:#37e08a;box-shadow:0 0 8px #37e08a}
+.status.err .dot{background:#ff6b6b;box-shadow:0 0 8px #ff6b6b}
+/* 折りたたみセクション */
+.sect.col h2{cursor:pointer;display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;user-select:none}
+.sect.col h2 .caret{font-size:13px;color:#5fd0d3;transition:transform .2s}
+.sect.col.collapsed h2{margin-bottom:0}
+.sect.col.collapsed h2 .caret{transform:rotate(-90deg)}
+.sect.col.collapsed > *:not(h2){display:none}
+/* OBSへドラッグ＆ドロップ */
+.dragchip{display:flex;align-items:center;gap:10px;background:#06181b;border:1.5px dashed #1ab5ba66;border-radius:10px;padding:13px 12px;color:#bfe9e9;font-size:13px;font-weight:700;cursor:grab;user-select:none;transition:.15s}
+.dragchip:hover{border-color:#1ab5ba99}
+.dragchip:active{cursor:grabbing;border-color:var(--meter);background:#0a2429}
+.dragchip .dchip-ic{font-size:18px;color:#5fd0d3;line-height:1}
+.dragchip.copied{border-color:var(--meter);color:#eafafa}
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+
+<div id="stage"><div id="box" class="d-text">
+  <span id="wIcon"></span>
+  <span id="wLabel"></span>
+  <div id="wGauge"><div id="wFill"></div><span id="wPct">0%</span></div>
+  <span id="wCount">0</span>
+  <span id="wGoal"></span>
+</div></div>
+
+<button id="gear" title="設定">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+</button>
+
+<div id="panel">
+  <div class="phead"><h1><b>WINカウンター</b><span class="ver" id="ver"></span></h1><div class="phead-r"><button class="close" id="closeBtn">×</button></div></div>
+
+  <div class="sect">
+    <h2>WIN数（手動・テスト）</h2>
+    <div style="display:flex;gap:8px;margin-bottom:11px">
+      <input type="number" id="setVal" min="-99999" max="99999" step="1" value="0" style="flex:1;width:auto">
+      <button class="tb" id="btnSet" style="flex:0 0 auto;min-width:56px">設定</button>
+    </div>
+    <div class="testbtns">
+      <button class="tb" id="btnPlus">＋1</button>
+      <button class="tb" id="btnMinus">−1</button>
+      <button class="tb reset" id="btnReset">↻ リセット</button>
+    </div>
+    <div class="status" id="statusWin">現在: 0</div>
+    <div class="status" id="conn"><span class="dot"></span><span id="connTx"></span></div>
+    <div class="hint"><b>コインメーターの目標達成で自動的に加算</b>されます（コインメーター⚙「達成でWIN追加」のWIN数ぶん）。数はサーバーに保存されるので、リロードしても消えません。</div>
+  </div>
+
+  <div class="sect col">
+    <h2>デザイン<span class="caret">▾</span></h2>
+    <div class="tabpane">
+      <div class="designs">
+        <button class="dbtn" data-design="text">シンプル文字</button>
+        <button class="dbtn" data-design="gold">ゴールド数字</button>
+        <button class="dbtn" data-design="bar">ダークバー</button>
+        <button class="dbtn" data-design="frame">ゲージバー</button>
+        <button class="dbtn" data-design="pill">角丸バー</button>
+      </div>
+      <div class="hint">「ゴールド数字」「ダークバー」「ゲージバー」はマイクラのWINプラグイン（CommonWIN）と同じデザイン。見た目はデザインごとに保存されます。ゲージバーは マイナス=赤 / 達成=金 に自動で変わります。</div>
+    </div>
+  </div>
+
+  <div class="sect">
+    <h2>目標WIN数</h2>
+    <div class="row"><label>目標WIN数（例 3 / 10 の 10）</label><input type="number" id="sGoal" min="1" max="99999" step="1"></div>
+    <div class="hint">目標は常に「3 / 10」の形で表示されます。ゲージバー/角丸バーではゲージの満タン量になり、達成演出の判定にも使われます。</div>
+  </div>
+
+  <div class="sect">
+    <h2>マイクラ連携（CommonWIN）</h2>
+    <div class="row"><label>プラグインのWINを自動反映</label><label class="sw"><input type="checkbox" id="sMcOn"><span class="track"></span><span class="knob"></span></label></div>
+    <div class="row" id="rowMcUrl"><label>プラグインのURL</label><input type="text" id="sMcUrl" placeholder="http://localhost:8765" style="width:190px"></div>
+    <div class="status" id="mcStat" style="display:none"><span class="dot"></span><span id="mcStatTx"></span></div>
+    <div class="hint">マイクラのWINプラグイン（CommonWIN）のオーバーレイ（既定 http://localhost:8765）を1秒ごとに監視し、<b>ゲーム内のWIN増減をそのままこのカウンターへ反映</b>します。＋WIN/−WIN/目標達成の演出も動きます。マイクラが別PCの場合はそのPCのIPアドレスに変えてください（例 http://192.168.1.5:8765）。</div>
+  </div>
+
+  <div class="sect">
+    <h2>OBSに貼り付け</h2>
+    <div class="dragchip" id="dragUrl" draggable="true" title="OBSのブラウザソースURL欄へドラッグ／クリックでコピー">
+      <span class="dchip-ic">⠿</span>
+      <span class="dchip-tx" id="dragTx">ここを掴んで OBS のURL欄へドロップ</span>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button class="btn" id="copyObs" style="flex:1;margin-top:0">📋 URLをコピー</button>
+      <button class="btn sec" id="openObs" style="flex:1;margin-top:0">別タブで開く</button>
+    </div>
+    <div class="hint">設定を変えても<b>URLはそのまま</b>で自動反映されます（貼り直し不要）。</div>
+  </div>
+
+  <div class="sect col collapsed">
+    <h2>文字<span class="caret">▾</span></h2>
+    <div class="row"><label>ラベル（空欄で非表示）</label><input type="text" id="sLabel" maxlength="20" style="width:120px"></div>
+    <div class="row"><label>文字サイズ（全体）</label><span style="display:flex;align-items:center;gap:8px"><input type="range" id="sSize" min="24" max="300" step="2"><span id="sSizeVal" style="font-size:11px;color:#7fb3b5;width:44px;text-align:right">96px</span></span></div>
+    <div class="row"><label>WIN数字の大きさ（数字だけ拡大）</label><span style="display:flex;align-items:center;gap:8px"><input type="range" id="sCountScale" min="50" max="300" step="10"><span id="sCountScaleVal" style="font-size:11px;color:#7fb3b5;width:44px;text-align:right">100%</span></span></div>
+    <div class="row" id="rowOutline"><label>縁取り（黒フチ）</label><label class="sw"><input type="checkbox" id="sOutline"><span class="track"></span><span class="knob"></span></label></div>
+  </div>
+
+  <div class="sect col collapsed">
+    <h2>色<span class="caret">▾</span></h2>
+    <div class="row"><label>ラベルの色</label><input type="color" id="sLabelColor"></div>
+    <div class="row"><label>数字の色</label><input type="color" id="sCountColor"></div>
+    <div class="row" id="rowFill"><label>ゲージの色</label><input type="color" id="sFillColor"></div>
+    <div class="row" id="rowBgOn"><label>背景プレート</label><label class="sw"><input type="checkbox" id="sBgOn"><span class="track"></span><span class="knob"></span></label></div>
+    <div class="row"><label>背景の色</label><input type="color" id="sBgColor"></div>
+    <div class="row"><label>背景の不透明度</label><input type="range" id="sBgOpacity" min="0" max="100" step="5"></div>
+  </div>
+
+  <div class="sect col collapsed">
+    <h2>アイコン<span class="caret">▾</span></h2>
+    <div class="row"><label>種類</label>
+      <select id="sIcon">
+        <option value="none">なし</option>
+        <option value="trophy">トロフィー（状態で色が変化）</option>
+        <option value="emoji">絵文字（自由入力）</option>
+        <option value="image">画像（アップロード）</option>
+      </select>
+    </div>
+    <div class="row" id="rowIconEmoji"><label>絵文字</label><input type="text" id="sIconEmoji" maxlength="4" style="width:80px;text-align:center"></div>
+    <div class="row" id="rowIconImage"><label>画像を選択</label><input type="file" id="sIconFile" accept="image/*"></div>
+    <div class="hint" id="hintIconImage">画像は自動で縮小して保存されます（透過PNG推奨）。</div>
+  </div>
+
+  <div class="sect col collapsed">
+    <h2>表示<span class="caret">▾</span></h2>
+    <div class="row" id="rowGauge"><label>ゲージを表示（OFFで数字だけ）</label><label class="sw"><input type="checkbox" id="sGaugeOn"><span class="track"></span><span class="knob"></span></label></div>
+    <div class="row"><label>横位置</label><select id="sAlign" style="width:100px"><option value="left">左</option><option value="center">中央</option><option value="right">右</option></select></div>
+    <div class="row"><label>縦位置</label><select id="sValign" style="width:100px"><option value="top">上</option><option value="middle">中央</option><option value="bottom">下</option></select></div>
+  </div>
+
+  <div class="sect">
+    <h2>達成・WIN演出（動画/画像/音）</h2>
+    <div class="hint" style="margin:0 0 10px">WINの演出は<b>演出オーバーレイ（別URL）</b>で設定・再生します。トリガー「WINが増えたとき」「WINが減ったとき」「WINの目標を達成したとき」でルールを作ると、動画・画像・音を再生でき、<b>表示位置はドラッグで自由に調整</b>できます。OBSには演出オーバーレイのURLを別ソースとして貼ってください。</div>
+    <button class="btn" id="openAlertEdit">🎬 演出オーバーレイの設定を開く</button>
+  </div>
+</div>
+
+<script>
+'use strict';
+const APP_VERSION='0.0.0';   // サーバーが配信時に実バージョンへ書き換える
+const BOOT=window.__LT_BOOT||{id:'',type:'win',mode:'win',rankMode:null,sync:'win',edit:true,settings:null};
+const OBS=!BOOT.edit;
+function $(id){ return document.getElementById(id); }
+
+/* ===== 設定（既定値＋サニタイズ） ===== */
+const DESIGNS=['text','gold','bar','frame','pill'];
+// 見た目キー＝デザインごとに別保存する項目（settings._byDesign に退避）
+const DESIGN_KEYS=['label','labelColor','countColor','fillColor','size','countScale','outlineOn','bgOn','bgColor','bgOpacity','icon','iconEmoji','iconImage','gaugeOn'];
+// デザイン初回選択時の推奨既定値（bar/frame はCommonWINプラグインと同じ配色）
+const DESIGN_DEFAULTS={
+  text: {label:'WIN',labelColor:'#fbdb58',countColor:'#ffffff',fillColor:'#1ab5ba',size:96,countScale:100,outlineOn:true, bgOn:false,bgColor:'#000000',bgOpacity:40, icon:'none', iconEmoji:'🏆',iconImage:'',gaugeOn:true},
+  gold: {label:'WIN',labelColor:'#ffcc33',countColor:'#ffcc33',fillColor:'#1ab5ba',size:96,countScale:100,outlineOn:true, bgOn:false,bgColor:'#000000',bgOpacity:40, icon:'none', iconEmoji:'🏆',iconImage:'',gaugeOn:true},
+  bar:  {label:'Win',labelColor:'#f2f2f2',countColor:'#e8e8e8',fillColor:'#1ab5ba',size:48,countScale:100,outlineOn:false,bgOn:true, bgColor:'#1d1d1f',bgOpacity:100,icon:'emoji',iconEmoji:'🏆',iconImage:'',gaugeOn:true},
+  frame:{label:'WIN',labelColor:'#ffffff',countColor:'#ffffff',fillColor:'#14907c',size:48,countScale:100,outlineOn:false,bgOn:true, bgColor:'#10262a',bgOpacity:100,icon:'trophy',iconEmoji:'🏆',iconImage:'',gaugeOn:true},
+  pill: {label:'WIN',labelColor:'#ffffff',countColor:'#ffffff',fillColor:'#1ab5ba',size:52,countScale:100,outlineOn:false,bgOn:true, bgColor:'#101820',bgOpacity:100,icon:'emoji',iconEmoji:'🏆',iconImage:'',gaugeOn:true}
+};
+const DEFAULTS=Object.assign({design:'text',goal:10,align:'center',valign:'middle'},DESIGN_DEFAULTS.text);
+
+function sanitize(o){
+  o=(o&&typeof o==='object')?o:{};
+  const s={};
+  s.design=DESIGNS.indexOf(o.design)>=0?o.design:'text';
+  s.label=String(o.label!=null?o.label:DEFAULTS.label).slice(0,20);
+  s.labelColor=/^#[0-9a-fA-F]{6}$/.test(o.labelColor)?o.labelColor:DEFAULTS.labelColor;
+  s.countColor=/^#[0-9a-fA-F]{6}$/.test(o.countColor)?o.countColor:DEFAULTS.countColor;
+  s.fillColor=/^#[0-9a-fA-F]{6}$/.test(o.fillColor)?o.fillColor:DEFAULTS.fillColor;
+  s.size=Math.max(24,Math.min(300,parseInt(o.size,10)||DEFAULTS.size));
+  s.countScale=Math.max(50,Math.min(300,parseInt(o.countScale,10)||100));
+  s.gaugeOn=o.gaugeOn!==false;
+  s.outlineOn=o.outlineOn!==false;
+  s.goalOn=true;   // 目標は常に表示（v0.3.0で必須化）
+  s.goal=Math.max(1,Math.min(99999,parseInt(o.goal,10)||DEFAULTS.goal));
+  s.bgOn=!!o.bgOn;
+  s.bgColor=/^#[0-9a-fA-F]{6}$/.test(o.bgColor)?o.bgColor:DEFAULTS.bgColor;
+  s.bgOpacity=Math.max(0,Math.min(100,parseInt(o.bgOpacity,10)!=null&&!isNaN(parseInt(o.bgOpacity,10))?parseInt(o.bgOpacity,10):DEFAULTS.bgOpacity));
+  s.align=['left','center','right'].indexOf(o.align)>=0?o.align:DEFAULTS.align;
+  s.valign=['top','middle','bottom'].indexOf(o.valign)>=0?o.valign:DEFAULTS.valign;
+  s.icon=['none','trophy','emoji','image'].indexOf(o.icon)>=0?o.icon:DEFAULTS.icon;
+  s.iconEmoji=String(o.iconEmoji!=null&&o.iconEmoji!==''?o.iconEmoji:'🏆').slice(0,4);
+  s.iconImage=(typeof o.iconImage==='string'&&o.iconImage.length<400000)?o.iconImage:'';
+  // マイクラ連携（CommonWINプラグインのオーバーレイをサーバーが監視して増減を反映）
+  const mc=(o.mc&&typeof o.mc==='object')?o.mc:{};
+  s.mc={on:!!mc.on,url:String(mc.url||'http://localhost:8765').slice(0,300)};
+  s._byDesign=(o._byDesign&&typeof o._byDesign==='object')?o._byDesign:{};
+  return s;
+}
+let settings=sanitize(BOOT.settings);
+let total=0;
+
+/* ===== デザイン別ストア（見た目をデザインごとに保存。overlay.html と同方式） ===== */
+function stashDesign(design){ const o=settings._byDesign[design]||(settings._byDesign[design]={}); for(const k of DESIGN_KEYS) o[k]=settings[k]; }
+function applyDesign(design){
+  const o=settings._byDesign[design];
+  if(o){ for(const k of DESIGN_KEYS) if(k in o) settings[k]=o[k]; }
+  else { const d=DESIGN_DEFAULTS[design]||{}; for(const k of DESIGN_KEYS) if(k in d) settings[k]=d[k]; stashDesign(design); }
+  settings=sanitize(settings);
+}
+
+/* ===== 表示反映 ===== */
+function hexToRgba(hex,pct){
+  const n=parseInt(hex.slice(1),16);
+  return 'rgba('+((n>>16)&255)+','+((n>>8)&255)+','+(n&255)+','+(Math.max(0,Math.min(100,pct))/100)+')';
+}
+// 指定色を factor 倍に明暗調整（frame のチップ/ゲージ溝色を背景から自動計算。プラグインと同じ）
+function shadeHex(hex,factor){
+  let out='#';
+  for(let i=0;i<3;i++){
+    let c=parseInt(hex.substr(1+i*2,2),16);
+    c=Math.max(0,Math.min(255,Math.round(c*factor)));
+    out+=(c<16?'0':'')+c.toString(16);
+  }
+  return out;
+}
+// frameテーマ既定アイコン: 色が状態連動する塗りつぶしトロフィー（CommonWINと同じ）
+const TROPHY_SVG='<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M2.5.5A.5.5 0 0 1 3 0h10a.5.5 0 0 1 .5.5q0 .807-.034 1.536a3 3 0 1 1-1.133 5.89c-.79 1.865-1.878 2.777-2.833 3.011v2.173l1.425.356c.194.048.377.135.537.255L13.3 15.1a.5.5 0 0 1-.3.9H3a.5.5 0 0 1-.3-.9l1.838-1.379c.16-.12.343-.207.537-.255L6.5 13.11v-2.173c-.955-.234-2.043-1.146-2.833-3.012a3 3 0 1 1-1.132-5.89A33 33 0 0 1 2.5.5m.099 2.54a2 2 0 0 0 .72 3.935c-.333-1.05-.588-2.346-.72-3.935m10.083 3.935a2 2 0 0 0 .72-3.935c-.133 1.59-.388 2.885-.72 3.935"/></svg>';
+
+function renderIcon(){
+  const ic=$('wIcon');
+  if(settings.icon==='none'){ ic.style.display='none'; ic.innerHTML=''; return; }
+  ic.style.display='flex';
+  if(settings.icon==='trophy'){ ic.innerHTML=TROPHY_SVG; }
+  else if(settings.icon==='image'){
+    ic.innerHTML='';
+    if(settings.iconImage){ const img=document.createElement('img'); img.src=settings.iconImage; img.alt=''; ic.appendChild(img); }
+    else { ic.style.display='none'; }
+  }
+  else { ic.textContent=settings.iconEmoji||'🏆'; }
+}
+function render(){
+  const st=$('stage'),box=$('box'),ic=$('wIcon'),lb=$('wLabel'),ct=$('wCount'),gl=$('wGoal'),gg=$('wGauge'),gf=$('wFill'),gp=$('wPct');
+  const d=settings.design;
+  st.style.justifyContent=settings.align==='left'?'flex-start':settings.align==='right'?'flex-end':'center';
+  st.style.alignItems=settings.valign==='top'?'flex-start':settings.valign==='bottom'?'flex-end':'center';
+  box.className='d-'+d;
+  box.style.setProperty('--size',settings.size+'px');
+  box.style.setProperty('--cs',String(settings.countScale/100));   // WIN数字だけの拡大率
+
+  // ラベル・数字・目標（目標は常に表示）
+  lb.textContent=settings.label;
+  ct.textContent=total.toLocaleString('en-US');
+  gl.textContent='/ '+settings.goal.toLocaleString('en-US');
+  gl.style.display='';
+
+  // 色（デザインごとの割り当て）
+  lb.style.color=settings.labelColor;
+  ct.style.color=settings.countColor;
+  gl.style.color=(d==='gold')?settings.countColor:(d==='bar'||d==='frame')?settings.labelColor:settings.countColor;
+  ic.style.color=(d==='frame')?'':settings.labelColor;   // frameは状態色（CSS変数 --faccent）に任せる
+
+  // 背景（text/goldは任意プレート、bar/frame/pillは常時。チップ/溝は背景から自動計算）
+  const bgAlways=(d==='bar'||d==='frame'||d==='pill');
+  const bgOn=bgAlways||settings.bgOn;
+  box.classList.toggle('bg',bgOn&&(d==='text'||d==='gold'));
+  box.style.background=bgOn?hexToRgba(settings.bgColor,bgAlways?Math.max(settings.bgOpacity,10):settings.bgOpacity):'transparent';
+  box.style.setProperty('--chip',shadeHex(settings.bgColor,d==='bar'?0.5:0.45));
+  box.style.setProperty('--track',shadeHex(settings.bgColor,1.8));
+
+  // 縁取り（text=ソフト / gold=プラグイン式ハード）
+  [lb,ct,gl].forEach(el=>{
+    el.classList.toggle('outline',settings.outlineOn&&d==='text');
+    el.classList.toggle('outline2',settings.outlineOn&&d==='gold');
+  });
+
+  // ゲージ（frame/pill のみ。「ゲージを表示」OFFでゲージなし版＝WIN [n] / 目標 の表示になる）
+  const gauge=(d==='frame'||d==='pill')&&settings.gaugeOn&&settings.goal>0;
+  gg.style.display=gauge?'block':'none';
+  if(d==='frame') lb.style.display=(settings.label&&!gauge)?'':'none';   // プラグインの gauge=off と同じ挙動
+  else lb.style.display=settings.label?'':'none';
+  if(gauge){
+    const pct=Math.max(0,Math.min(100,Math.floor(total/settings.goal*100)));
+    gf.style.width=pct+'%';
+    gf.style.background=settings.fillColor;
+    gp.textContent=pct+'%';
+  }
+
+  // 状態色（frame: マイナス=赤 / 達成=金）
+  box.classList.toggle('neg',d==='frame'&&total<0);
+  box.classList.toggle('achieved',d==='frame'&&settings.goal>0&&total>=settings.goal);
+
+  renderIcon();
+}
+function setTotal(n,animate){
+  const changed=(n|0)!==total;
+  total=n|0;
+  render();
+  if(animate&&changed){ const ct=$('wCount'); ct.classList.remove('bump'); void ct.offsetWidth; ct.classList.add('bump'); }
+  if(!OBS){
+    const v=$('setVal'); if(v&&document.activeElement!==v) v.value=total;
+    const sw=$('statusWin'); if(sw) sw.textContent='現在: '+total.toLocaleString('en-US')+' / 目標 '+settings.goal.toLocaleString('en-US');
+  }
+}
+
+/* ===== サーバー接続（プロファイルIDのルームに入る） =====
+   達成/±WIN演出は演出オーバーレイ（/overlay/<id>/alert）側で再生する（このページは表示専用）。 */
+let sock=null;
+let mcSeenAt=0;   // mcStatus を最後に受け取った時刻（古いサーバー検出用）
+function setConn(msg,cls){ const c=$('conn'),t=$('connTx'); if(c&&t){ t.textContent=msg||''; c.className='status '+(cls||''); } }
+try{
+  sock=io({query:{id:BOOT.id,ch:'win'},transports:['websocket','polling'],reconnection:true,reconnectionDelay:3000});
+  window.__ltkSock=sock;
+  sock.on('connect',()=>setConn('サーバー接続OK','ok'));
+  sock.on('disconnect',()=>setConn('切断（再接続待ち）','err'));
+  sock.on('connect_error',()=>setConn('サーバーに接続できません','err'));
+  sock.on('winCount',d=>{ if(d&&d.total!=null) setTotal(d.total,true); });
+  // サーバーが更新された（版が違う）→ OBS内の古いページを自分でリロードして最新化
+  sock.on('appVersion',v=>{ if(OBS&&v&&v!==APP_VERSION){ setTimeout(()=>{ try{ location.reload(); }catch(_){} },600+Math.floor(Math.random()*1500)); } });
+  sock.on('settings',d=>{ if(OBS&&d&&d.mode==='win'&&d.data){ settings=sanitize(d.data); render(); } });
+  // マイクラ連携の状態（サーバーのポーリング結果）
+  sock.on('mcStatus',d=>{
+    mcSeenAt=Date.now();
+    if(OBS||!d) return;
+    const el=$('mcStat'),tx=$('mcStatTx');
+    if(!el||!tx) return;
+    if(!(settings.mc&&settings.mc.on)){ el.style.display='none'; return; }
+    el.style.display='';
+    el.className='status '+(d.ok?'ok':'err');
+    tx.textContent=d.ok?('マイクラと接続OK（プラグイン側のWIN: '+d.wins+'）'):('未接続：'+(d.error||'エラー'));
+  });
+}catch(e){ setConn('接続の生成に失敗','err'); }
+// ページ内エラーはサーバーの /debug に集約
+window.addEventListener('error',ev=>{ try{ if(sock&&sock.connected) sock.emit('clientError',{level:'error',message:'win.html: '+(ev.message||'script error'),detail:(ev.filename||'')+':'+(ev.lineno||'')}); }catch(_){} });
+
+/* ===== 編集パネル ===== */
+if(OBS){
+  $('gear').classList.add('hidden');
+  $('panel').classList.add('hidden');
+}else{
+  document.body.classList.add('edit');
+  $('panel').classList.add('open');   // 編集ページでは最初から開く
+  $('ver').textContent='v'+APP_VERSION;
+
+  // 古いサーバー検出：APP_VERSION はサーバーが自分の版に書き換える。この値と違う＝
+  // アプリ（start.bat）が更新後に再起動されておらず、マイクラ連携などの新機能が動かない。
+  const PAGE_VERSION='0.19.2';
+  if(APP_VERSION!==PAGE_VERSION){
+    const warn=document.createElement('div');
+    warn.style.cssText='margin:12px 20px 0;background:#3a2412;border:1.5px solid #fbdb58;border-radius:10px;padding:10px 12px;font-size:12.5px;color:#ffe9a8;line-height:1.7';
+    warn.innerHTML='⚠ <b>アプリの再起動が必要です。</b>古いサーバー（v'+APP_VERSION+'）が動いているため、マイクラ連携・演出連動などの新機能が動作しません。<b>start.bat をもう一度実行してください</b>（古いサーバーは自動で終了して入れ替わります。ウィンドウが見当たらなくても大丈夫です）。';
+    const ph=document.querySelector('.phead');
+    ph.parentNode.insertBefore(warn,ph.nextSibling);
+  }
+  // マイクラ連携ONなのに状態が届かない（＝サーバーが古い等）ときの表示
+  setInterval(()=>{
+    if(!(settings.mc&&settings.mc.on)) return;
+    if(mcSeenAt&&Date.now()-mcSeenAt<5000) return;
+    const el=$('mcStat'),tx=$('mcStatTx');
+    if(el&&tx){ el.style.display=''; el.className='status err'; tx.textContent='状態が取得できません。start.bat をもう一度実行してください（古いサーバーは自動で入れ替わります）。'; }
+  },4000);
+
+  // パネル開閉・セクション折りたたみ（overlay.html と同じ操作感）
+  $('gear').addEventListener('click',()=>$('panel').classList.toggle('open'));
+  $('closeBtn').addEventListener('click',()=>$('panel').classList.remove('open'));
+  document.querySelectorAll('.sect.col h2').forEach(h=>h.addEventListener('click',()=>h.parentElement.classList.toggle('collapsed')));
+
+  // OBS用URL（表示専用ページ）
+  function obsUrl(){ return location.origin+'/overlay/'+BOOT.id+'/win'; }
+  $('dragUrl').addEventListener('dragstart',e=>{ try{ e.dataTransfer.setData('text/uri-list',obsUrl()); e.dataTransfer.setData('text/plain',obsUrl()); }catch(_){} });
+  function copyUrl(btn){
+    const u=obsUrl();
+    (navigator.clipboard?navigator.clipboard.writeText(u):Promise.reject()).catch(()=>{
+      try{ const t=document.createElement('textarea'); t.value=u; document.body.appendChild(t); t.select(); document.execCommand('copy'); document.body.removeChild(t); }catch(_){}
+    });
+    if(btn){ const o=btn.textContent; btn.textContent='✓ コピーしました'; setTimeout(()=>btn.textContent=o,1300); }
+  }
+  $('dragUrl').addEventListener('click',()=>{ copyUrl(null); const d=$('dragUrl'); d.classList.add('copied'); $('dragTx').textContent='✓ URLをコピーしました'; setTimeout(()=>{ d.classList.remove('copied'); $('dragTx').textContent='ここを掴んで OBS のURL欄へドロップ'; },1400); });
+  $('copyObs').addEventListener('click',()=>copyUrl($('copyObs')));
+  $('openObs').addEventListener('click',()=>{ try{ window.open(obsUrl(),'_blank'); }catch(_){} });
+  $('openAlertEdit').addEventListener('click',()=>{ try{ window.open(location.origin+'/edit/'+BOOT.id+'/alert','_blank'); }catch(_){} });
+
+  // 設定→UIへ反映
+  function fillPanel(){
+    document.querySelectorAll('.dbtn[data-design]').forEach(b=>b.classList.toggle('on',b.dataset.design===settings.design));
+    $('sIcon').value=settings.icon;
+    $('sIconEmoji').value=settings.iconEmoji;
+    $('sLabel').value=settings.label;
+    $('sLabelColor').value=settings.labelColor;
+    $('sCountColor').value=settings.countColor;
+    $('sFillColor').value=settings.fillColor;
+    $('sSize').value=settings.size; $('sSizeVal').textContent=settings.size+'px';
+    $('sCountScale').value=settings.countScale; $('sCountScaleVal').textContent=settings.countScale+'%';
+    $('sOutline').checked=settings.outlineOn;
+    $('sGaugeOn').checked=settings.gaugeOn;
+    $('sGoal').value=settings.goal;
+    $('sBgOn').checked=settings.bgOn;
+    $('sBgColor').value=settings.bgColor;
+    $('sBgOpacity').value=settings.bgOpacity;
+    $('sAlign').value=settings.align;
+    $('sValign').value=settings.valign;
+    $('sMcOn').checked=settings.mc.on;
+    $('sMcUrl').value=settings.mc.url;
+    updateRowVis();
+  }
+  // デザインに応じて関係ない設定行を隠す
+  function updateRowVis(){
+    const d=settings.design;
+    $('rowOutline').style.display=(d==='text'||d==='gold')?'':'none';
+    $('rowFill').style.display=(d==='frame'||d==='pill')?'':'none';
+    $('rowGauge').style.display=(d==='frame'||d==='pill')?'':'none';
+    $('rowBgOn').style.display=(d==='text'||d==='gold')?'':'none';
+    $('rowMcUrl').style.display=settings.mc.on?'':'none';
+    if(!settings.mc.on){ const el=$('mcStat'); if(el) el.style.display='none'; }
+    $('rowIconEmoji').style.display=(settings.icon==='emoji')?'':'none';
+    const img=(settings.icon==='image');
+    $('rowIconImage').style.display=img?'':'none';
+    $('hintIconImage').style.display=img?'':'none';
+  }
+  fillPanel();
+
+  // UI→設定へ反映＋保存（サーバー保存→開いているOBSソースへ即時配信）
+  let saveT=null;
+  function save(){
+    clearTimeout(saveT);
+    saveT=setTimeout(()=>{ try{ if(sock&&sock.connected) sock.emit('setSettings',{data:settings}); }catch(_){} },250);
+  }
+  function readPanel(){
+    const keep={design:settings.design,iconImage:settings.iconImage,_byDesign:settings._byDesign};
+    settings=sanitize(Object.assign({},keep,{
+      icon:$('sIcon').value,
+      iconEmoji:$('sIconEmoji').value,
+      label:$('sLabel').value,
+      labelColor:$('sLabelColor').value,
+      countColor:$('sCountColor').value,
+      fillColor:$('sFillColor').value,
+      size:$('sSize').value,
+      countScale:$('sCountScale').value,
+      outlineOn:$('sOutline').checked,
+      gaugeOn:$('sGaugeOn').checked,
+      goal:$('sGoal').value,
+      bgOn:$('sBgOn').checked,
+      bgColor:$('sBgColor').value,
+      bgOpacity:$('sBgOpacity').value,
+      align:$('sAlign').value,
+      valign:$('sValign').value,
+      mc:{on:$('sMcOn').checked,url:$('sMcUrl').value.trim()||'http://localhost:8765'}
+    }));
+    stashDesign(settings.design);
+    $('sSizeVal').textContent=settings.size+'px';
+    $('sCountScaleVal').textContent=settings.countScale+'%';
+    updateRowVis();
+    render(); save();
+    const sw=$('statusWin'); if(sw) sw.textContent='現在: '+total.toLocaleString('en-US')+' / 目標 '+settings.goal.toLocaleString('en-US');
+  }
+  ['sIcon','sIconEmoji','sLabel','sLabelColor','sCountColor','sFillColor','sSize','sCountScale','sOutline','sGaugeOn','sGoal','sBgOn','sBgColor','sBgOpacity','sAlign','sValign','sMcOn','sMcUrl']
+    .forEach(id=>{ $(id).addEventListener('input',readPanel); $(id).addEventListener('change',readPanel); });
+
+  // デザイン切替（見た目はデザインごとに保存。初回はそのデザインの推奨配色で開始）
+  // fillPanel が万一失敗しても切替・保存自体は止めない（デザインが選べなくなる事故の防止）
+  document.querySelectorAll('.dbtn[data-design]').forEach(b=>b.addEventListener('click',()=>{
+    if(b.dataset.design===settings.design) return;
+    stashDesign(settings.design);
+    settings.design=b.dataset.design;
+    applyDesign(settings.design);
+    try{ fillPanel(); }catch(_){}
+    render(); save();
+  }));
+
+  // アイコン画像：canvasで縮小してから設定に保存（設定サイズの上限対策）
+  $('sIconFile').addEventListener('change',e=>{
+    const f=e.target.files&&e.target.files[0]; e.target.value='';
+    if(!f) return;
+    const r=new FileReader();
+    r.onload=()=>{
+      const img=new Image();
+      img.onload=()=>{
+        const MAX=160, sc=Math.min(1,MAX/Math.max(img.width,img.height));
+        const cv=document.createElement('canvas');
+        cv.width=Math.max(1,Math.round(img.width*sc)); cv.height=Math.max(1,Math.round(img.height*sc));
+        cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
+        let out=''; try{ out=cv.toDataURL('image/png'); }catch(_){ out=String(r.result||''); }
+        if(out.length>=400000){ alert('画像が大きすぎます。もっと小さい画像にしてください。'); return; }
+        settings.iconImage=out; settings.icon='image'; $('sIcon').value='image';
+        stashDesign(settings.design);
+        updateRowVis(); render(); save();
+      };
+      img.onerror=()=>alert('画像を読み込めませんでした');
+      img.src=String(r.result||'');
+    };
+    r.readAsDataURL(f);
+  });
+
+  // カウント操作（サーバーが累計を保持→ルーム全員へ権威値が届く）
+  $('btnPlus').onclick =()=>{ try{ sock.emit('winAdd',{n:1}); }catch(_){} };
+  $('btnMinus').onclick=()=>{ try{ sock.emit('winAdd',{n:-1}); }catch(_){} };
+  $('btnReset').onclick=()=>{ if(confirm('WIN数を 0 にリセットしますか？')) try{ sock.emit('winSet',{total:0}); }catch(_){} };
+  $('btnSet').onclick  =()=>{ const v=parseInt($('setVal').value,10)||0; try{ sock.emit('winSet',{total:v}); }catch(_){} };
+  $('setVal').addEventListener('keydown',e=>{ if(e.key==='Enter') $('btnSet').click(); });
+}
+
+render();
+</script>
+</body>
+</html>

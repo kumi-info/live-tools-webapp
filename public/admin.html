@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LIVE Tools Web</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%2310262a'/><text x='50' y='68' font-size='52' text-anchor='middle'>📺</text></svg>">
+<script src="/socket.io/socket.io.js"></script>
+<style>
+  body{font-family:system-ui,"Segoe UI",sans-serif;background:#0f171c;color:#e7eef0;margin:0;display:flex;min-height:100vh;justify-content:center;padding:26px 12px}
+  .card{background:#16222a;border:2px solid #1ab5ba;border-radius:16px;padding:16px 20px;width:min(720px,94vw);box-shadow:0 10px 40px rgba(0,0,0,.4);height:fit-content}
+  h1{font-size:19px;margin:0 0 3px;color:#1ab5ba}
+  h2{font-size:15px;margin:14px 0 6px;color:#bfe9ea}
+  .ver{font-size:11px;color:#6f858d;font-weight:400;margin-left:6px}
+  .sub{font-size:12px;color:#8aa0a8;margin-bottom:10px;line-height:1.6}
+  hr{border:0;border-top:1px solid #1f2a31;margin:12px 0}
+  label{font-size:11.5px;color:#8aa0a8;display:block;margin-bottom:4px}
+  .row{display:flex;gap:8px}
+  input[type=text]{flex:1;background:#0f171c;border:1px solid #2a3a42;color:#e7eef0;border-radius:10px;padding:8px 11px;font-size:14px;min-width:0}
+  button{background:#1ab5ba;color:#06343a;font-weight:800;border:0;border-radius:10px;padding:9px 14px;font-size:13.5px;cursor:pointer}
+  button:active{transform:translateY(1px)}
+  button.ghost{background:#1b2a31;color:#bfe9ea;border:1px solid #2a3a42}
+  button.disc{background:#26202a;color:#ff9aab;border:1px solid rgba(216,85,106,.5)}
+  button.disc:hover{background:#d8556a;color:#fff}
+  button.sm{padding:5px 9px;font-size:11.5px;border-radius:8px}
+  .now{font-size:13px;background:#0f171c;border-radius:10px;padding:8px 12px;margin-bottom:9px}
+  .now b{color:#fbdb58}
+  .st{font-size:12px;margin-top:7px;color:#8aa0a8;min-height:14px}
+  .acline{display:flex;align-items:center;gap:10px;margin-top:8px;font-size:12.5px;color:#cdd9dd}
+  .acline .actxt{flex:1}
+  .acline .acsub{font-size:11px;color:#8aa0a8}
+  .sw{position:relative;display:inline-block;width:46px;height:26px;flex:0 0 auto;cursor:pointer}
+  .sw input{display:none}
+  .sw .tk{position:absolute;inset:0;background:#2a3a42;border-radius:13px;transition:.15s}
+  .sw .kn{position:absolute;top:3px;left:3px;width:20px;height:20px;background:#e7eef0;border-radius:50%;transition:.15s}
+  .sw input:checked+.tk{background:#1ab5ba}
+  .sw input:checked+.tk+.kn{transform:translateX(20px)}
+  /* プロファイル一覧 */
+  .prof{background:#0f171c;border:1.5px solid #2a3a42;border-radius:12px;padding:10px 12px;margin-bottom:10px}
+  .prof .top{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+  .prof .nm{flex:1;background:transparent;border:1px solid transparent;color:#e7eef0;font-weight:800;font-size:14.5px;border-radius:8px;padding:4px 8px;min-width:0}
+  .prof .nm:hover,.prof .nm:focus{border-color:#2a3a42;background:#111c22;outline:none}
+  .prof .pid{font-size:10.5px;color:#5d737c;font-family:monospace}
+  .chips{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:6px}
+  .chip{display:flex;align-items:center;gap:6px;background:#111c22;border:1px solid #23343c;border-radius:9px;padding:6px 8px}
+  .chip .cnm{flex:1;font-size:12px;font-weight:700;color:#bfe9ea;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .chip a{ text-decoration:none }
+  .empty{text-align:center;color:#6f858d;font-size:13px;padding:18px 0}
+  .foot{display:flex;justify-content:space-between;align-items:center;margin-top:10px}
+  .foot a{font-size:12px;color:#8aa0a8;text-decoration:none}
+  /* ヘッダーの お知らせ/使い方 ボタン（デスクトップ版と同じ並び） */
+  .hdr{display:flex;align-items:center;gap:8px;margin-bottom:14px}
+  .hdr h1{flex:1;margin:0}
+  .topHelp{position:relative;display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:800;color:#bfe9ea;background:#1b2a31;border:1px solid #2a3a42;border-radius:9px;padding:6px 11px;text-decoration:none;transition:.15s;white-space:nowrap}
+  .topHelp:hover{border-color:#1ab5ba;color:#1ab5ba}
+  .ndot{position:absolute;top:-4px;right:-4px;width:10px;height:10px;border-radius:50%;background:#ff5c6a;box-shadow:0 0 6px #ff5c6a}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="hdr">
+    <h1>📺 LIVE Tools Web<span class="ver" id="appVer"></span></h1>
+    <a class="topHelp" href="/analytics.html" title="配信ごとのいいね・コイン・視聴者データ">📊 配信分析</a>
+    <a class="topHelp" href="/news.html" title="お知らせ・更新情報">📢 お知らせ<span class="ndot" id="newsDot" style="display:none"></span></a>
+    <a class="topHelp" href="/help.html" title="使い方・ヘルプ">❓ 使い方</a>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin:-4px 0 12px">
+    <a class="topHelp" id="btnGameBeta" href="/gamebeta" target="_blank" style="color:#c77dff;display:none" title="ギフト等でマイクラのコマンド・音声・Pavlok等を自動実行（プロファイル切替・ゲームルール設定つき）">🎮 ゲーム連携β</a>
+    <a class="topHelp" id="btnGachaBeta" href="/gachabeta" target="_blank" style="color:#7ae0e3;display:none" title="特定のギフトが飛んだら抽選して演出を出す独立ガチャ（ハズレ/当たり/プレミア・妨害/救済）">🎲 ガチャβ</a>
+    <a class="topHelp" href="/pavlok" target="_blank" title="Pavlok（ビリビリデバイス）連携">⚡ Pavlok連携</a>
+  </div>
+  <div class="sub">ブラウザだけで使えるLIVE Tools。<b>オーバーレイセット</b>を作ると各メーターの短いURLが発行されます。OBSのブラウザソースにURLを貼れば、<b>設定を変えてもURLはそのまま</b>で自動反映されます。</div>
+
+  <h2>接続</h2>
+  <div class="sub" style="margin-bottom:7px">TikTokユーザー名を入れて「接続」。次回から自動でつなぎます。</div>
+  <div class="now" id="now">現在: <b>-</b></div>
+  <label>TikTokユーザー名（@は不要）</label>
+  <div class="row"><input type="text" id="u" placeholder="例: your_username" autocomplete="off"></div>
+  <div class="row" style="margin-top:6px">
+    <button id="conn" style="flex:1">接続</button>
+    <button id="disc" class="disc" style="flex:1">切断</button>
+  </div>
+  <div class="acline">
+    <span class="actxt">自動接続<br><span class="acsub">起動時に前回のユーザーへ自動でつなぐ</span></span>
+    <label class="sw"><input type="checkbox" id="ac"><span class="tk"></span><span class="kn"></span></label>
+  </div>
+  <div class="st" id="st"></div>
+
+  <hr>
+  <div style="display:flex;align-items:center;gap:10px">
+    <h2 style="flex:1;margin:0">オーバーレイセット</h2>
+    <button id="addProf" class="sm">＋ 新しいセットを作成</button>
+  </div>
+  <div class="sub" style="margin:6px 0 10px">1セット＝メーター一式（コイン/いいね/ギフト/ランキング/演出）。配信レイアウトごとに分けられます。名前はクリックで変更できます。</div>
+  <div id="profList"><div class="empty">読み込み中…</div></div>
+
+  <div class="foot">
+    <a id="dbg" href="/debug" target="_blank">🐞 デバッグ / エラーログ <span id="dbgn"></span></a>
+    <span style="font-size:11px;color:#5d737c">LIVE Tools Webアプリ版</span>
+  </div>
+</div>
+
+<script>
+'use strict';
+const APP_VERSION='0.0.0';   // サーバーが配信時に実バージョンへ書き換える
+const TYPE_LABEL={coin:'コイン',like:'いいね',gift:'ギフト',ranking:'いいねRank',coinrank:'コインRank',win:'WIN数',alert:'演出'};
+function $(id){ return document.getElementById(id); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+/* ===== 接続（Socket.IO） ===== */
+var s=io();
+s.on("errorCount",function(n){var a=$("dbg"),b=$("dbgn");if(b)b.textContent=n?("("+n+")"):"";if(a)a.style.color=n?"#ff6b6b":"#8aa0a8";});
+function render(d){
+  var u=(d&&d.user)||"-";
+  var state=d&&d.live?"🔴 受信中":(d&&d.stopped?"⏸ 切断中":"⏳ 待機中");
+  $("now").innerHTML="現在: <b>@"+esc(u)+"</b> &nbsp; "+state;
+  var box=$("u"); if(d&&d.user&&!box.value)box.value=d.user;
+  var ac=$("ac"); if(ac&&d&&typeof d.autoConnect!=="undefined")ac.checked=!!d.autoConnect;
+}
+s.on("status",render);
+s.on("connect",function(){$("st").textContent="準備OK";});
+s.on("connect_error",function(){$("st").textContent="サーバーに接続できません";});
+$("ac").addEventListener("change",function(e){s.emit("setAutoConnect",{on:e.target.checked});$("st").textContent=e.target.checked?"自動接続: ON":"自動接続: OFF";});
+function doConnect(){var v=($("u").value||"").trim().replace(/^@+/,"");if(v){s.emit("setUser",{user:v});$("st").textContent="@"+v+" に接続します...";}else{$("st").textContent="ユーザー名を入れてください";}}
+$("conn").onclick=doConnect;
+$("disc").onclick=function(){s.emit("stopConnect");$("st").textContent="切断しました";};
+$("u").addEventListener("keydown",function(e){if(e.key==="Enter")doConnect();});
+
+/* ===== プロファイル（オーバーレイセット）管理 ===== */
+function api(path,opt){ return fetch(path,opt).then(r=>r.json()); }
+function loadProfiles(){
+  api('/api/profiles').then(j=>{
+    const list=(j&&j.profiles)||[];
+    const box=$('profList');
+    if(!list.length){ box.innerHTML='<div class="empty">まだありません。「＋ 新しいセットを作成」で作ってください。</div>'; return; }
+    box.innerHTML=list.map(p=>{
+      const chips=Object.keys(p.urls).map(t=>
+        '<div class="chip"><span class="cnm">'+esc(TYPE_LABEL[t]||t)+'</span>'+
+        '<button class="sm ghost" data-copy="'+esc(p.urls[t])+'" title="OBS用URLをコピー">📋 URL</button>'+
+        '<a class="sm ghost" style="padding:5px 9px;border-radius:8px;background:#1b2a31;color:#bfe9ea;border:1px solid #2a3a42;font-size:11.5px;font-weight:800" href="/edit/'+esc(p.id)+'/'+esc(t)+'" target="_blank" title="設定を編集">⚙</a></div>'
+      ).join('');
+      return '<div class="prof" data-id="'+esc(p.id)+'">'+
+        '<div class="top">'+
+          '<input class="nm" value="'+esc(p.name)+'" title="クリックで名前を変更" spellcheck="false">'+
+          '<span class="pid">'+esc(p.id)+'</span>'+
+          '<a class="sm ghost" style="padding:5px 9px;border-radius:8px;background:#1b2a31;color:#bfe9ea;border:1px solid #2a3a42;font-size:11.5px;font-weight:800;text-decoration:none" href="/overlay/'+esc(p.id)+'" target="_blank" title="URL一覧ページを開く">📄 一覧</a>'+
+          '<button class="sm disc" data-del="'+esc(p.id)+'">🗑 削除</button>'+
+        '</div>'+
+        '<div class="chips">'+chips+'</div>'+
+      '</div>';
+    }).join('');
+  }).catch(()=>{ $('profList').innerHTML='<div class="empty">読み込みに失敗しました（サーバー起動中？）</div>'; });
+}
+$('addProf').addEventListener('click',()=>{
+  api('/api/profiles',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})
+    .then(j=>{ if(j&&j.ok) loadProfiles(); else alert('作成に失敗しました：'+((j&&j.error)||'不明なエラー')); })
+    .catch(()=>alert('作成に失敗しました（サーバーに接続できません）'));
+});
+$('profList').addEventListener('click',e=>{
+  const cp=e.target.closest('button[data-copy]');
+  if(cp){
+    const u=location.origin+cp.getAttribute('data-copy');
+    (navigator.clipboard?navigator.clipboard.writeText(u):Promise.reject()).catch(function(){
+      var t=document.createElement('textarea'); t.value=u; document.body.appendChild(t); t.select();
+      try{document.execCommand('copy');}catch(_){ } document.body.removeChild(t);
+    });
+    const o=cp.textContent; cp.textContent='✓ コピー'; setTimeout(()=>cp.textContent=o,1300);
+    return;
+  }
+  const del=e.target.closest('button[data-del]');
+  if(del){
+    const id=del.getAttribute('data-del');
+    const nm=(del.closest('.prof').querySelector('.nm')||{}).value||id;
+    if(!confirm('「'+nm+'」を削除しますか？\nこのセットのURLを使っているOBSソースは表示されなくなります。')) return;
+    api('/api/profiles/'+id,{method:'DELETE'}).then(()=>loadProfiles()).catch(()=>alert('削除に失敗しました'));
+  }
+});
+// 名前の変更（フォーカスが外れたら保存）
+$('profList').addEventListener('focusout',e=>{
+  const nm=e.target.closest('input.nm'); if(!nm) return;
+  const id=nm.closest('.prof').getAttribute('data-id');
+  api('/api/profiles/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:nm.value.trim()})}).catch(()=>{});
+});
+$('profList').addEventListener('keydown',e=>{ if(e.key==='Enter'&&e.target.closest('input.nm')) e.target.blur(); });
+
+$('appVer').textContent='v'+APP_VERSION;
+
+// ベータ機能（ゲーム連携β/ガチャβ）は同梱されている場合だけボタンを表示する（公開配布版では非表示のまま）
+api('/api/features').then(function(f){
+  if(f&&f.gamebeta){ var b=$('btnGameBeta'); if(b) b.style.display=''; }
+  if(f&&f.gachabeta){ var g=$('btnGachaBeta'); if(g) g.style.display=''; }
+}).catch(function(){});
+loadProfiles();
+
+// お知らせの未読バッジ（news.html の NEWS_REV と必ず一致させる。更新を足したら両方変える）
+(function(){
+  try{
+    var NEWS_REV='0.19.2-r1';
+    var dot=$('newsDot');
+    if(dot){ var ack=null; try{ ack=localStorage.getItem('ltw_news_ack'); }catch(_){} if(ack!==NEWS_REV) dot.style.display=''; }
+  }catch(_){}
+})();
+
+// 古いサーバー検出：APP_VERSION はサーバーが自分の版に書き換える。この値と違う＝
+// ファイルは更新済みなのに古いサーバーが動いたまま（再起動漏れ・二重起動）。
+(function(){
+  try{
+    var PAGE_VERSION='0.19.2';
+    if(APP_VERSION===PAGE_VERSION) return;
+    var warn=document.createElement('div');
+    warn.style.cssText='background:#3a2412;border:1.5px solid #fbdb58;border-radius:10px;padding:10px 12px;font-size:12.5px;color:#ffe9a8;line-height:1.7;margin-bottom:12px';
+    warn.innerHTML='⚠ <b>古いサーバー（v'+APP_VERSION+'）が動いています。</b>マイクラ連携などの新機能が動作しません。<b>start.bat をもう一度実行してください</b>（古いサーバーは自動で終了して新しいものに入れ替わります。ウィンドウが見当たらなくても、裏で動いているだけなので大丈夫です）。';
+    var card=document.querySelector('.card');
+    card.insertBefore(warn,card.firstChild);
+  }catch(_){}
+})();
+</script>
+</body>
+</html>

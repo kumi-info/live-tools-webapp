@@ -1,0 +1,31 @@
+# ===== 依存パッケージ（初回起動時に npm install で自動生成） =====
+node_modules/
+
+# ===== 実行時データ（配信者ごとの設定・秘密情報・視聴者データ） =====
+# 公開してはいけない: .secret(暗号鍵) / 暗号化RCONパスワード / 視聴者の個人データ / アップロード済みメディア
+data/
+
+# ===== ベータ機能（公開配布版には同梱しない・ローカルには残す） =====
+# ゲーム連携β / ガチャβ とその専用インフラ（RCON/秘密情報暗号化）。
+# server.js / lib/tiktok.js は任意読込＋ガードのため、これらが無くても起動する。
+lib/gamebeta.js
+lib/gachabeta.js
+lib/rcon.js
+lib/secret.js
+public/gamebeta.html
+public/gamebeta-overlay.html
+public/gachabeta.html
+public/gachabeta-overlay.html
+
+# ===== ログ・一時ファイル =====
+*.log
+npm-debug.log*
+*.tmp
+*.bak
+
+# ===== OS / エディタ =====
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
