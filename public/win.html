@@ -467,7 +467,12 @@ try{
   sock.on('connect',()=>setConn('サーバー接続OK','ok'));
   sock.on('disconnect',()=>setConn('切断（再接続待ち）','err'));
   sock.on('connect_error',()=>setConn('サーバーに接続できません','err'));
-  sock.on('winCount',d=>{ if(d&&d.total!=null) setTotal(d.total,true); });
+  sock.on('winCount',d=>{
+    if(!d) return;
+    // 目標WIN数がプラグイン側（/win goal・/winboard goal）で変わったら即反映
+    if(d.goal!=null){ const g=Math.max(1,Math.min(99999,parseInt(d.goal,10)||settings.goal)); if(g!==settings.goal){ settings.goal=g; render(); } }
+    if(d.total!=null) setTotal(d.total,true);
+  });
   // サーバーが更新された（版が違う）→ OBS内の古いページを自分でリロードして最新化
   sock.on('appVersion',v=>{ if(OBS&&v&&v!==APP_VERSION){ setTimeout(()=>{ try{ location.reload(); }catch(_){} },600+Math.floor(Math.random()*1500)); } });
   sock.on('settings',d=>{ if(OBS&&d&&d.mode==='win'&&d.data){ settings=sanitize(d.data); render(); } });
@@ -497,7 +502,7 @@ if(OBS){
 
   // 古いサーバー検出：APP_VERSION はサーバーが自分の版に書き換える。この値と違う＝
   // アプリ（start.bat）が更新後に再起動されておらず、マイクラ連携などの新機能が動かない。
-  const PAGE_VERSION='0.19.2';
+  const PAGE_VERSION='1.0.2';
   if(APP_VERSION!==PAGE_VERSION){
     const warn=document.createElement('div');
     warn.style.cssText='margin:12px 20px 0;background:#3a2412;border:1.5px solid #fbdb58;border-radius:10px;padding:10px 12px;font-size:12.5px;color:#ffe9a8;line-height:1.7';

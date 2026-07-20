@@ -826,7 +826,7 @@ function testRule(r){
 function bindEditor(){
   // 古いサーバー検出：APP_VERSION はサーバーが自分の版に書き換える。この値と違う＝
   // アプリ（start.bat）が更新後に再起動されておらず、WIN連動トリガー等が動かない。
-  const PAGE_VERSION='0.19.2';
+  const PAGE_VERSION='1.0.2';
   if(APP_VERSION!==PAGE_VERSION){
     const warn=document.createElement('div');
     warn.style.cssText='max-width:860px;margin:0 auto 14px;background:#3a2412;border:1.5px solid #fbdb58;border-radius:10px;padding:10px 12px;font-size:12.5px;color:#ffe9a8;line-height:1.7';

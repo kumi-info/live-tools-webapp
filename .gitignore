@@ -10,12 +10,15 @@ data/
 # server.js / lib/tiktok.js は任意読込＋ガードのため、これらが無くても起動する。
 lib/gamebeta.js
 lib/gachabeta.js
+lib/levelbeta.js
 lib/rcon.js
 lib/secret.js
 public/gamebeta.html
 public/gamebeta-overlay.html
 public/gachabeta.html
 public/gachabeta-overlay.html
+public/levelbeta.html
+public/levelbeta-overlay.html
 
 # ===== ログ・一時ファイル =====
 *.log

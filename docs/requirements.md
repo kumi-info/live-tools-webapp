@@ -1,7 +1,7 @@
 # 要件定義書 — LIVE Tools Webアプリ版
 
 **対象**: `live-tools-webapp`（本リポジトリ）
-**バージョン**: v1.0.0
+**バージョン**: v1.0.2
 **作成日**: 2026-07-14
 **位置づけ**: TikTok LIVE 配信支援ツール「LIVE Tools」の **Webアプリ版**（exe不要・ブラウザ操作）の要件定義書。基本設計は [basic-design.md](basic-design.md)、詳細設計は [detailed-design.md](detailed-design.md) を参照。
 
@@ -30,7 +30,8 @@
 ### 背景
 - 用途は **TikTok 妨害配信**（視聴者のギフト／コメントで配信者を妨害・救済する参加型配信）の支援。
 - 表示オーバーレイは STE のように**短い固定URL**（例 `/overlay/k7xq2m9a/coin`）で、設定を変えても **URL貼り直し不要**であることが強く求められる。
-- WINカウンターは Minecraft プラグイン CommonWIN のオーバーレイをポーリングしてゲーム内WINを自動反映できる（役割分担。詳細は Minecraft 側の憲章 `PLUGIN_PROJECT_RULES.md` を参照）。
+- WINカウンターは Minecraft プラグイン CommonWIN のオーバーレイをポーリングしてゲーム内WINを自動反映できる（役割分担。詳細は Minecraft 側の憲章 `PLUGIN_PROJECT_RULES.md` を参照）。累計WIN数・目標WIN数ともマイクラ側を正とし、マイクラ側の `/win reset`・サーバー再起動でURL側も0にそろえる。
+- 累計WINは **アプリ（`start.bat`）を再起動するたびに0から**始める。OBS/ブラウザのリロードでは消さない（配信中に表示が飛ぶのを防ぐため）。
 
 ### 使用配信系統
 - Ladder（はしご登り）／Farm（農場）／Building（建築）等、系統を問わず利用。
@@ -48,7 +49,7 @@
 | ギフトカウンター | `/overlay/<id>/gift` | ギフト | ギフト個数表示 | — |
 | いいねランキング | `/overlay/<id>/ranking` | いいね | 視聴者別いいね順位 | — |
 | コインランキング | `/overlay/<id>/coinrank` | ギフト | 視聴者別コイン順位 | — |
-| WINカウンター | `/overlay/<id>/win` | 手動/自動 | 累計WIN数 | CommonWIN連携で自動加算・デザイン5種 |
+| WINカウンター | `/overlay/<id>/win` | 手動/自動 | 累計WIN数 | CommonWIN連携で自動加算・目標WIN数も追従・デザイン5種 |
 | 演出オーバーレイ | `/overlay/<id>/alert` | 各トリガー | mp4/webm/gif/png/mp3の演出 | ＋WIN/−WIN/目標達成でルール発動 |
 | URL一覧（人間用） | `/overlay/<id>` | — | そのセットの全URLコピー画面 | — |
 | 設定編集 | `/edit/<id>/<type>` | 配信者 | 歯車UI | 変更は開いているOBSソースへ即時反映 |

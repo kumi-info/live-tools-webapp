@@ -1,6 +1,6 @@
 {
   "name": "live-tools-webapp",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "LIVE Tools Webアプリ版（ブラウザ操作・短いURL・設定はサーバー保存）",
   "main": "server.js",
   "scripts": {

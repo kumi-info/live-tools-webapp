@@ -38,10 +38,15 @@
   /* プロファイル一覧 */
   .prof{background:#0f171c;border:1.5px solid #2a3a42;border-radius:12px;padding:10px 12px;margin-bottom:10px}
   .prof .top{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+  .prof.open .top{margin-bottom:10px}
+  .prof .tgl{flex:0 0 auto;width:26px;height:26px;display:flex;align-items:center;justify-content:center;background:#111c22;border:1px solid #23343c;border-radius:8px;color:#bfe9ea;cursor:pointer;font-size:11px;line-height:1;transition:.15s;padding:0}
+  .prof .tgl:hover{border-color:#1ab5ba;color:#1ab5ba}
+  .prof.open .tgl{transform:rotate(90deg)}
   .prof .nm{flex:1;background:transparent;border:1px solid transparent;color:#e7eef0;font-weight:800;font-size:14.5px;border-radius:8px;padding:4px 8px;min-width:0}
   .prof .nm:hover,.prof .nm:focus{border-color:#2a3a42;background:#111c22;outline:none}
   .prof .pid{font-size:10.5px;color:#5d737c;font-family:monospace}
-  .chips{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:6px}
+  .chips{display:none;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:6px}
+  .prof.open .chips{display:grid}
   .chip{display:flex;align-items:center;gap:6px;background:#111c22;border:1px solid #23343c;border-radius:9px;padding:6px 8px}
   .chip .cnm{flex:1;font-size:12px;font-weight:700;color:#bfe9ea;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .chip a{ text-decoration:none }
@@ -54,20 +59,32 @@
   .topHelp{position:relative;display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:800;color:#bfe9ea;background:#1b2a31;border:1px solid #2a3a42;border-radius:9px;padding:6px 11px;text-decoration:none;transition:.15s;white-space:nowrap}
   .topHelp:hover{border-color:#1ab5ba;color:#1ab5ba}
   .ndot{position:absolute;top:-4px;right:-4px;width:10px;height:10px;border-radius:50%;background:#ff5c6a;box-shadow:0 0 6px #ff5c6a}
+  /* メニュー（ドロップダウン） */
+  .menuWrap{position:relative}
+  #menuBtn{font-family:inherit;cursor:pointer}
+  .menu{position:absolute;top:calc(100% + 6px);right:0;z-index:30;min-width:190px;background:#16222a;border:1px solid #2a3a42;border-radius:12px;padding:6px;box-shadow:0 12px 34px rgba(0,0,0,.5);display:none;flex-direction:column;gap:2px}
+  .menu.open{display:flex}
+  .menu .mi{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:#cdd9dd;text-decoration:none;padding:9px 11px;border-radius:8px;white-space:nowrap;transition:.12s}
+  .menu .mi:hover{background:#1b2a31;color:#1ab5ba}
 </style>
 </head>
 <body>
 <div class="card">
   <div class="hdr">
     <h1>📺 LIVE Tools Web<span class="ver" id="appVer"></span></h1>
-    <a class="topHelp" href="/analytics.html" title="配信ごとのいいね・コイン・視聴者データ">📊 配信分析</a>
     <a class="topHelp" href="/news.html" title="お知らせ・更新情報">📢 お知らせ<span class="ndot" id="newsDot" style="display:none"></span></a>
     <a class="topHelp" href="/help.html" title="使い方・ヘルプ">❓ 使い方</a>
-  </div>
-  <div style="display:flex;gap:8px;flex-wrap:wrap;margin:-4px 0 12px">
-    <a class="topHelp" id="btnGameBeta" href="/gamebeta" target="_blank" style="color:#c77dff;display:none" title="ギフト等でマイクラのコマンド・音声・Pavlok等を自動実行（プロファイル切替・ゲームルール設定つき）">🎮 ゲーム連携β</a>
-    <a class="topHelp" id="btnGachaBeta" href="/gachabeta" target="_blank" style="color:#7ae0e3;display:none" title="特定のギフトが飛んだら抽選して演出を出す独立ガチャ（ハズレ/当たり/プレミア・妨害/救済）">🎲 ガチャβ</a>
-    <a class="topHelp" href="/pavlok" target="_blank" title="Pavlok（ビリビリデバイス）連携">⚡ Pavlok連携</a>
+    <div class="menuWrap">
+      <button class="topHelp" id="menuBtn" type="button" aria-haspopup="true" aria-expanded="false" title="各種ツール">☰ メニュー</button>
+      <div class="menu" id="menu">
+        <a class="mi" href="/analytics.html" target="_blank" title="配信ごとのいいね・コイン・視聴者データ">📊 配信分析</a>
+        <a class="mi" id="miLevelLog" href="/levelbeta?log=1" target="_blank" style="color:#ff9dd0;display:none" title="メンバーレベルが上がった履歴（誰が・いつ・何レベルに）を開く">📜 メンレベ履歴</a>
+        <a class="mi" id="miGameBeta" href="/gamebeta" target="_blank" style="color:#c77dff;display:none" title="ギフト等でマイクラのコマンド・音声・Pavlok等を自動実行">🎮 ゲーム連携β</a>
+        <a class="mi" id="miGachaBeta" href="/gachabeta" target="_blank" style="color:#7ae0e3;display:none" title="特定のギフトが飛んだら抽選して演出を出す独立ガチャ">🎲 ガチャβ</a>
+        <a class="mi" id="miLevelBeta" href="/levelbeta" target="_blank" style="color:#ff9dd0;display:none" title="視聴者のメンレベが上がった瞬間に演出を出す">💗 メンバーレベルβ</a>
+        <a class="mi" href="/pavlok" target="_blank" title="Pavlok（ビリビリデバイス）連携">⚡ Pavlok連携</a>
+      </div>
+    </div>
   </div>
   <div class="sub">ブラウザだけで使えるLIVE Tools。<b>オーバーレイセット</b>を作ると各メーターの短いURLが発行されます。OBSのブラウザソースにURLを貼れば、<b>設定を変えてもURLはそのまま</b>で自動反映されます。</div>
 
@@ -141,6 +158,7 @@ function loadProfiles(){
       ).join('');
       return '<div class="prof" data-id="'+esc(p.id)+'">'+
         '<div class="top">'+
+          '<button class="tgl" type="button" title="開く / たたむ">▶</button>'+
           '<input class="nm" value="'+esc(p.name)+'" title="クリックで名前を変更" spellcheck="false">'+
           '<span class="pid">'+esc(p.id)+'</span>'+
           '<a class="sm ghost" style="padding:5px 9px;border-radius:8px;background:#1b2a31;color:#bfe9ea;border:1px solid #2a3a42;font-size:11.5px;font-weight:800;text-decoration:none" href="/overlay/'+esc(p.id)+'" target="_blank" title="URL一覧ページを開く">📄 一覧</a>'+
@@ -157,6 +175,8 @@ $('addProf').addEventListener('click',()=>{
     .catch(()=>alert('作成に失敗しました（サーバーに接続できません）'));
 });
 $('profList').addEventListener('click',e=>{
+  const tg=e.target.closest('.tgl');
+  if(tg){ tg.closest('.prof').classList.toggle('open'); return; }
   const cp=e.target.closest('button[data-copy]');
   if(cp){
     const u=location.origin+cp.getAttribute('data-copy');
@@ -185,17 +205,34 @@ $('profList').addEventListener('keydown',e=>{ if(e.key==='Enter'&&e.target.close
 
 $('appVer').textContent='v'+APP_VERSION;
 
-// ベータ機能（ゲーム連携β/ガチャβ）は同梱されている場合だけボタンを表示する（公開配布版では非表示のまま）
+// ベータ機能（ゲーム連携β/ガチャβ）は同梱されている場合だけメニューに出す（公開配布版では非表示のまま）
 api('/api/features').then(function(f){
-  if(f&&f.gamebeta){ var b=$('btnGameBeta'); if(b) b.style.display=''; }
-  if(f&&f.gachabeta){ var g=$('btnGachaBeta'); if(g) g.style.display=''; }
+  if(f&&f.gamebeta){ var b=$('miGameBeta'); if(b) b.style.display=''; }
+  if(f&&f.gachabeta){ var g=$('miGachaBeta'); if(g) g.style.display=''; }
+  if(f&&f.levelbeta){ var l=$('miLevelBeta'); if(l) l.style.display='';
+    var lg=$('miLevelLog'); if(lg) lg.style.display=''; }
 }).catch(function(){});
 loadProfiles();
+
+// メニュー（ドロップダウン）の開閉
+(function(){
+  var btn=$('menuBtn'), menu=$('menu');
+  if(!btn||!menu) return;
+  function close(){ menu.classList.remove('open'); btn.setAttribute('aria-expanded','false'); }
+  btn.addEventListener('click',function(e){
+    e.stopPropagation();
+    var open=menu.classList.toggle('open');
+    btn.setAttribute('aria-expanded',open?'true':'false');
+  });
+  document.addEventListener('click',function(e){ if(!menu.contains(e.target)&&e.target!==btn) close(); });
+  document.addEventListener('keydown',function(e){ if(e.key==='Escape') close(); });
+  menu.addEventListener('click',function(e){ if(e.target.closest('.mi')) close(); });
+})();
 
 // お知らせの未読バッジ（news.html の NEWS_REV と必ず一致させる。更新を足したら両方変える）
 (function(){
   try{
-    var NEWS_REV='0.19.2-r1';
+    var NEWS_REV='1.0.2-r1';
     var dot=$('newsDot');
     if(dot){ var ack=null; try{ ack=localStorage.getItem('ltw_news_ack'); }catch(_){} if(ack!==NEWS_REV) dot.style.display=''; }
   }catch(_){}
@@ -205,7 +242,7 @@ loadProfiles();
 // ファイルは更新済みなのに古いサーバーが動いたまま（再起動漏れ・二重起動）。
 (function(){
   try{
-    var PAGE_VERSION='0.19.2';
+    var PAGE_VERSION='1.0.2';
     if(APP_VERSION===PAGE_VERSION) return;
     var warn=document.createElement('div');
     warn.style.cssText='background:#3a2412;border:1.5px solid #fbdb58;border-radius:10px;padding:10px 12px;font-size:12.5px;color:#ffe9a8;line-height:1.7;margin-bottom:12px';

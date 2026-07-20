@@ -29,6 +29,7 @@ const pavlok = require("./lib/pavlok");
 function optionalRequire(rel) { try { require.resolve(rel); } catch (_) { return null; } return require(rel); }
 const gamebeta = optionalRequire("./lib/gamebeta");
 const gachabeta = optionalRequire("./lib/gachabeta");
+const levelbeta = optionalRequire("./lib/levelbeta");
 const analytics = require("./lib/analytics");
 const { createBridge } = require("./lib/tiktok");
 
@@ -698,6 +699,39 @@ function routeGachaBeta(req, res, seg, method) {
   notFound(res);
 }
 
+// ===== 💗 メンバーレベルβ（チームレベルのアップで演出）。ページと設定APIはループバック限定 =====
+function routeLevelBeta(req, res, seg, method) {
+  if (!isLoopback(req)) { notFound(res); return; }
+  if (seg.length === 1 && method === "GET") { servePublicHtml(res, "levelbeta.html"); return; }
+  if (seg[1] === "status" && method === "GET") { json(res, 200, levelbeta.status()); return; }
+  // 演出専用オーバーレイ（OBSブラウザソース用・全画面）
+  if (seg[1] === "overlay" && method === "GET") { servePublicHtml(res, "levelbeta-overlay.html"); return; }
+  if (seg[1] === "save" && method === "POST") {
+    readJsonBody(req).then((b) => {
+      const ok = levelbeta.saveConfig(b);
+      json(res, ok ? 200 : 500, ok ? { ok: true } : { ok: false, error: "保存に失敗しました" });
+    }).catch((e) => json(res, 400, { ok: false, error: errToStr(e) }));
+    return;
+  }
+  // 演出のテスト（設定した演出を1回出す）
+  if (seg[1] === "test" && method === "POST") {
+    const ok = levelbeta.testTrigger();
+    json(res, ok ? 200 : 400, ok ? { ok: true } : { ok: false, error: "演出を出せませんでした" });
+    return;
+  }
+  // レベルアップ・ログ（誰が・いつ・何レベルに上がったか）
+  if (seg[1] === "log" && method === "GET") { json(res, 200, { ok: true, entries: levelbeta.getLog(200), broadcasts: (levelbeta.getSessions ? levelbeta.getSessions() : []) }); return; }
+  if (seg[1] === "log" && method === "POST") {
+    readJsonBody(req).then((b) => {
+      if (b && b.action === "clear") { levelbeta.clearLog(); json(res, 200, { ok: true }); return; }
+      if (b && b.action === "delete") { const removed = levelbeta.deleteLog(b.keys || []); json(res, 200, { ok: true, removed }); return; }
+      json(res, 400, { ok: false, error: "不明な操作です" });
+    }).catch((e) => json(res, 400, { ok: false, error: errToStr(e) }));
+    return;
+  }
+  notFound(res);
+}
+
 // ===== メディアアップロード（ブラウザから。Electron File.path 依存を廃止） =====
 const MEDIA_MAX_BYTES = 50 * 1024 * 1024;   // 50MB上限
 function handleMediaUpload(req, res, rawName) {
@@ -765,6 +799,7 @@ function route(req, res) {
   // ---- ゲーム連携（プリセット式：RCON/HTTP/Pavlok/キー送信/音声） ----
   if (seg[0] === "gamebeta") { if (gamebeta) { routeGameBeta(req, res, seg, method); } else { notFound(res); } return; }
   if (seg[0] === "gachabeta") { if (gachabeta) { routeGachaBeta(req, res, seg, method); } else { notFound(res); } return; }
+  if (seg[0] === "levelbeta") { if (levelbeta) { routeLevelBeta(req, res, seg, method); } else { notFound(res); } return; }
   // 旧「ゲーム連携（現行版）」のURLはβへ転送（v0.16.0で一本化。β非同梱時は404）
   if (seg[0] === "game") { if (gamebeta) { res.writeHead(302, { Location: "/gamebeta" }); res.end(); } else { notFound(res); } return; }
 
@@ -784,7 +819,7 @@ function routeApi(req, res, u, seg, method) {
   // GET /api/version
   if (seg[1] === "version" && method === "GET") { json(res, 200, { version: VERSION }); return; }
   // GET /api/features — ベータ機能の同梱状況（admin.html がβボタンの表示可否に使う）
-  if (seg[1] === "features" && method === "GET") { json(res, 200, { gamebeta: !!gamebeta, gachabeta: !!gachabeta }); return; }
+  if (seg[1] === "features" && method === "GET") { json(res, 200, { gamebeta: !!gamebeta, gachabeta: !!gachabeta, levelbeta: !!levelbeta }); return; }
   // GET /api/status
   if (seg[1] === "status" && method === "GET") { json(res, 200, bridge.statusObj()); return; }
   // POST /api/connect {user}
@@ -880,6 +915,7 @@ const VALID_SYNC = new Set(Object.keys(profiles.TYPES).map((k) => profiles.TYPES
 // （β非同梱の公開版では gamebeta/gachabeta が null のためスキップ）
 if (gamebeta) gamebeta.init({ sendHotkey, io, getGiftCatalog: () => bridge.giftCatalog });
 if (gachabeta) gachabeta.init({ io, getGiftCatalog: () => bridge.giftCatalog });
+if (levelbeta) levelbeta.init({ io });
 
 // ===== WINカウンターの配信 =====
 // win ルーム（カウンター表示）と alerts ルーム（演出オーバーレイのWINトリガー）の両方へ届ける。
@@ -897,8 +933,11 @@ function emitWinCount(pid, extra) {
 
 // ===== マイクラ連携（CommonWINプラグインのオーバーレイAPIをポーリング） =====
 // WIN設定 mc:{on,url} が有効なプロファイルごとに <url>/wins（{wins,goal,seq,up}）を1秒ごとに読む。
-// 初回とプラグイン再起動（up変化）は基準合わせのみ。以降は差分を addWins → via:"add" で配信
+// 初回（webapp起動直後）は基準合わせのみ。以降は差分を addWins → via:"add" で配信
 // （＝WINカウンターの表示更新と、演出オーバーレイの ＋WIN/−WIN/目標達成 トリガーが両方動く）。
+// リセット条件（URL側の累計も0にそろえる）：
+//   ① マイクラ側サーバー（プラグイン）の再起動＝up変化を検知したとき（前回upは profiles に永続。webapp同時再起動でも判定可）。
+//   ② プラグインが「>0 → 0」に落ちたとき＝ /win reset（WINダッシュボードのリセットも内部でこれを呼ぶ）。
 const mcSync = {};   // pid -> {wins,up,ok,inflight}
 function setMcStatus(pid, st, ok, wins, error) {
   st.ok = ok;
@@ -925,11 +964,37 @@ setInterval(() => {
         try {
           const j = JSON.parse(buf);
           if (typeof j.wins !== "number") throw new Error("bad payload");
-          const fresh = (st.wins == null || j.up !== st.up);
-          const delta = fresh ? 0 : (j.wins - st.wins);
+          const savedUp = profiles.getMcUp(id);          // 前回同期時に見たプラグイン起動エポック（永続）
+          const restarted = (savedUp != null && j.up !== savedUp);  // マイクラ側サーバー（プラグイン）の再起動を検知
+          const first = (st.wins == null);                // webapp起動直後 or mc有効化直後の初回同期
+          // リセット検知：プラグイン側が「>0 → 0」に落ちたら /win reset（＝WinBoard reset も内部で /win reset を叩く）とみなす。
+          // 差分方式だと webapp 累計とプラグイン累計がずれている場合に0へそろわない（マイナス値になる等）ため、
+          // このときだけ差分ではなく絶対値0で URL 側の累計もリセットする。
+          const isReset = (!first && !restarted && st.wins > 0 && j.wins === 0);
+          const delta = (first || restarted) ? 0 : (j.wins - st.wins);
           st.wins = j.wins; st.up = j.up;
+          if (j.up !== savedUp) profiles.setMcUp(id, j.up);   // 新しいプラグイン世代を記録
           setMcStatus(id, st, true, j.wins);
-          if (delta) { profiles.addWins(id, delta); emitWinCount(id, { via: "add", n: delta, mc: true }); }
+          // 目標WIN数もプラグイン側（/win goal・/winboard goal）に即時追従させる。
+          // CommonWIN goal=0（＝目標未設定）のときは webapp 側の設定を尊重して上書きしない。
+          const mcGoal = (typeof j.goal === "number" && j.goal >= 1) ? Math.min(99999, Math.floor(j.goal)) : null;
+          if (mcGoal != null) {
+            const curGoal = ws ? parseInt(ws.goal, 10) : NaN;
+            if (mcGoal !== curGoal) {
+              const nd = Object.assign({}, ws, { goal: mcGoal });
+              profiles.putSettings(id, "win", nd);
+              // OBSのWINオーバーレイへ即時反映（settingsで再描画）＋演出オーバーレイの目標達成判定も更新
+              try { io.to("ov:" + id + ":win").emit("settings", { mode: "win", data: nd }); } catch (_) {}
+              emitWinCount(id, { via: "goal", mc: true });
+            }
+          }
+          if (restarted || isReset) {
+            // サーバー再起動 or リセットコマンド → URL側の累計も0にそろえる。
+            // via:"set"＝リセット扱い（±WIN演出は鳴らさない。目標達成のみ判定される）
+            profiles.setWins(id, 0); emitWinCount(id, { via: "set", mc: true });
+          } else if (delta) {
+            profiles.addWins(id, delta); emitWinCount(id, { via: "add", n: delta, mc: true });
+          }
         } catch (e) { setMcStatus(id, st, false, null, "応答が読み取れません（URLがCommonWINのオーバーレイか確認してください）"); }
       });
       res.on("error", () => { st.inflight = false; });
@@ -960,6 +1025,8 @@ io.on("connection", (socket) => {
   if (String(q.gb || "") === "overlay") socket.join("gbov");
   // ガチャβ演出の受け取り（専用オーバーレイ /gachabeta/overlay が参加する）
   if (String(q.gb || "") === "gachabeta") socket.join("gachaov");
+  // メンバーレベルβ演出の受け取り（専用オーバーレイ /levelbeta/overlay が参加する）
+  if (String(q.gb || "") === "levelbeta") socket.join("levelov");
 
   // 接続してきたページに、まず現在の状態を渡す
   // appVersion: OBS内の古いページ（更新前にキャッシュされたHTML）が自分でリロードして最新化するための通知
@@ -1113,6 +1180,9 @@ httpServer.on("error", (err) => {
 });
 httpServer.listen(PORT, () => {
   bootTime = Date.now();
+  // アプリ再起動ごとにWINを0から始める（要望）。
+  // socket再接続だけ（OBS/ブラウザのリロード）ではここは通らないので「リロードでは消えない」は維持される。
+  try { const r = profiles.resetAllWins(); if (r.length) console.log(`   WINカウンターを0にリセット（${r.length}プロファイル）`); } catch (_) {}
   const home = `http://localhost:${PORT}/`;
   console.log(`✅ LIVE Tools Webアプリ版 v${VERSION} 起動`);
   console.log(`   管理画面: ${home}`);
